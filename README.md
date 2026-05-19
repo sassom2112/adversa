@@ -28,30 +28,7 @@ human intervention** after hitting a domain gap on real telemetry.
 
 ## What It Does
 
-```
-Mounted disk image  (/mnt/hostname)
-        │
-        ▼
-┌───────────────────────────────┐
-│  PHASE 1 — Triage Agent       │  Pass 1: ~25 deterministic SIFT commands
-│  "The Optimist"               │  Pass 2: 75-call Claude agentic loop
-│  blue_agent.py                │  Scores techniques, extracts IOCs
-└──────────────┬────────────────┘
-               │ triage_report.json
-               ▼
-┌───────────────────────────────┐
-│  PHASE 2 — Forensic Auditor   │  For each triage finding, independently
-│  "The Cynic"                  │  re-runs SIFT commands to verify
-│  auditor_agent.py             │  CONFIRMED requires physical artifact
-└──────────────┬────────────────┘  INCONCLUSIVE if evidence not found
-               │ transcript.json   REFUTED if contradicted
-               ▼
-┌───────────────────────────────┐
-│  PHASE 3 — Unified Report     │  HTML report, IOC JSON, investigation.json
-│  investigate.py               │  Auto-propagates confirmed IOCs to
-│                               │  subsequent host investigations
-└───────────────────────────────┘
-```
+![ADVERSA Layered Forensic Architecture Stack](docs/adversa-architecture.png)
 
 Detection is backed by **11 operational rules** trained via an adversarial Red vs Blue loop on
 **~49,519 real Mordor/OTRF Sysmon events** across 9 MITRE ATT&CK techniques.

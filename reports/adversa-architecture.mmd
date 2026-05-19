@@ -1,0 +1,136 @@
+graph TD
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 0: THE BRAIN & PATTERN GENERATION
+    %% ───────────────────────────────────────────────────────────
+    subgraph L0["🧠 LAYER 0: Adversarial Simulation Core (Offline)"]
+        direction TB
+        DS[("mordor_dataset\nTelemetry Warehouse\n49,519 Sysmon events · 9 techniques")]
+
+        subgraph Engine["Mutation Loop"]
+            RED["Red Agent\n(msticpy_red_agent.py)"]
+            ENRICH["Event Enrichment\n(msticpy_enrichment.py)\nIP · registry · process context"]
+            EVOLVE["Evasion Logic\nArtifact Mutation"]
+            RED <-->|Mutate Signatures| EVOLVE
+            RED --> ENRICH
+        end
+
+        BLU["Blue Discriminator\n(brain.py :: BlueDiscriminator)"]
+        PDB[("pattern_db.py\nSQLite Storage\nhit / miss signal weights")]
+        RULES[("operational_rules.json\nHardened Rule Set\n11 rules · 3,000 iterations")]
+
+        DS --> RED
+        Engine -->|Sysmon events + enrichment| BLU
+        BLU -->|record detection| PDB
+        PDB -->|signal weight update| BLU
+        BLU -->|export static TTP weights| RULES
+    end
+
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 1: ENGINE ORCHESTRATION & STATE
+    %% ───────────────────────────────────────────────────────────
+    subgraph L1["⚙️ LAYER 1: Orchestration & Session Execution"]
+        direction LR
+        SH["adversa.sh\nCLI Entry Point\n--ioc-file  --no-synthesis"]
+        ORCH["investigate.py\nState Manager"]
+        SH --> ORCH
+    end
+    RULES -->|Runtime Ingestion| ORCH
+
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 2: MULTI-AGENT PIPELINE
+    %% ───────────────────────────────────────────────────────────
+    subgraph L2["🤖 LAYER 2: Forensic Agency Tier"]
+        direction TB
+
+        subgraph AGENT_1["Phase 1 — Triage Agent  (blue_agent.py)"]
+            P1["Pass 1 · Deterministic Sweep\n~25 SIFT Commands / under 60s\ngeneric TTP detection · no case IOCs"]
+            SCORE["ASL Scoring Engine\nweighted signal match\nprotected single-signal bonus"]
+            P2["Pass 2 · Agentic Loop\n25 tool-call budget\nevent logs · prefetch parsing\nshellbags · LSA secrets · registry timeline"]
+            P1 --> SCORE --> P2
+        end
+
+        subgraph AGENT_2["Phase 2 — Forensic Auditor  (auditor_agent.py)"]
+            PAR["asyncio.gather\nIsolated MCP session per technique\nall challenges run in parallel"]
+            RND["3 rounds × 2 tools each\nCONFIRMED / REFUTED / INCONCLUSIVE\nphysical artifact verification only"]
+            ADJ["Adjusted Score\n= Σ confirmed technique weights"]
+            PAR --> RND --> ADJ
+        end
+
+        AGENT_1 -->|Triage Findings Report| AGENT_2
+    end
+    ORCH --> AGENT_1
+
+    %% ── Shared LLM ──────────────────────────────────────────────
+    API(["Anthropic API\nclaude-opus-4-5"])
+    P2 <-->|tool_use loop| API
+    RND <-->|tool_use loop| API
+
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 3: MCP SECURITY BOUNDARY
+    %% ───────────────────────────────────────────────────────────
+    subgraph L3["🛡️ LAYER 3: MCP Security & Verification Layer  (sift_server.py)"]
+        direction TB
+        RTC["run_terminal_command\nCore Execution Primitive"]
+        UTL["run_volatility\nsearch_ioc\ncompute_file_hash"]
+        GATE{"Validator Gate\n① Hard-blocked strings\n② Binary allowlist · 50+ tools\n③ Quote-aware pipe split\n④ Redirect guard → reports/ only"}
+        RTC --> GATE
+        UTL --> GATE
+    end
+
+    P1 -->|stdio Transport| RTC
+    P2 -->|stdio Transport| RTC
+    RND -->|stdio Transport| RTC
+
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 4: PHYSICAL EVIDENCE INTERFACE
+    %% ───────────────────────────────────────────────────────────
+    subgraph L4["🖥️ LAYER 4: Host OS & Evidence Interface"]
+        direction LR
+        BIN["SIFT Binaries\nvol.py · rip.pl · strings · fls · icat\nyara · md5sum · xxd · grep · find"]
+        IMG[("Mounted Forensic Image\n/mnt/host\nRead-Only Target")]
+        BIN --> IMG
+    end
+    GATE -->|Validated Native Invocation| BIN
+
+    %% ───────────────────────────────────────────────────────────
+    %% LAYER 5: OUTPUT & CAMPAIGN MANAGEMENT
+    %% ───────────────────────────────────────────────────────────
+    subgraph L5["📦 LAYER 5: Output & Campaign Management"]
+        direction LR
+        HTML["html_report.py\nhost-report.html"]
+        JLOG[("JSONL Audit Log\nChain of Custody\nevery command + timestamp")]
+        IOCX["extract_iocs.py\nhost-iocs.json\nconfirmed artifacts only"]
+        MERGE["adversa-merge-iocs.sh\ncampaign-iocs.json\nmulti-host dedup"]
+    end
+
+    AGENT_2 --> HTML
+    AGENT_2 --> IOCX
+    GATE -.->|Atomic Append| JLOG
+    IOCX -->|Accumulate threat intel| MERGE
+    MERGE -.->|Dynamic IOC injection| SH
+
+    %% ── Security Boundary Legend ────────────────────────────────
+    subgraph LEGEND["Security Boundary Key"]
+        direction LR
+        PB["🟡 PROMPT-BASED\nOperator instructions (CLAUDE.md)\nAgent system prompts\nModel can ignore — not a hard boundary"]
+        AB["🔴 ARCHITECTURAL\nMCP Validator Gate (Layer 3)\nCode-enforced before subprocess.run()\nModel cannot override"]
+    end
+
+    %% ── Theme ────────────────────────────────────────────────────
+    classDef l0Style fill:#f3e5f5,stroke:#9c27b0,stroke-width:2px;
+    classDef l1Style fill:#fff3e0,stroke:#ff9800,stroke-width:2px;
+    classDef l2Style fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px;
+    classDef l3Style fill:#ffebee,stroke:#f44336,stroke-width:3px;
+    classDef l4Style fill:#e1f5fe,stroke:#03a9f4,stroke-width:2px;
+    classDef l5Style fill:#e8f5e9,stroke:#4caf50,stroke-width:2px;
+    classDef promptStyle fill:#fff9c4,stroke:#f9a825,stroke-width:2px;
+    classDef archStyle fill:#ffebee,stroke:#c62828,stroke-width:3px;
+
+    class L0,Engine l0Style;
+    class L1,ORCH,SH l1Style;
+    class L2,AGENT_1,AGENT_2 l2Style;
+    class L3,GATE l3Style;
+    class L4,BIN l4Style;
+    class L5,HTML,JLOG,IOCX,MERGE l5Style;
+    class PB promptStyle;
+    class AB,GATE archStyle;

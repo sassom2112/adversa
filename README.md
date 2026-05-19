@@ -1,0 +1,182 @@
+# ADVERSA — Adversarial Forensic Investigation Framework
+
+**A dual-agent forensic AI that autonomously investigates Windows disk images using an adversarial verification loop: a Triage Agent finds evidence, a Forensic Auditor challenges every finding, only confirmed artifacts survive.**
+
+SANS FIND EVIL! Hackathon 2026 — Adversarial Signal Learning (ASL)
+
+---
+
+## What It Does
+
+```
+Mounted disk image  (/mnt/hostname)
+        │
+        ▼
+┌───────────────────────────────┐
+│  PHASE 1 — Triage Agent       │  Pass 1: ~25 deterministic SIFT commands
+│  "The Optimist"               │  Pass 2: 75-call Claude agentic loop
+│  blue_agent.py                │  Scores techniques, extracts IOCs
+└──────────────┬────────────────┘
+               │ triage_report.json
+               ▼
+┌───────────────────────────────┐
+│  PHASE 2 — Forensic Auditor   │  For each triage finding, independently
+│  "The Cynic"                  │  re-runs SIFT commands to verify
+│  auditor_agent.py             │  CONFIRMED requires physical artifact
+└──────────────┬────────────────┘  INCONCLUSIVE if evidence not found
+               │ transcript.json   REFUTED if contradicted
+               ▼
+┌───────────────────────────────┐
+│  PHASE 3 — Unified Report     │  HTML report, IOC JSON, investigation.json
+│  investigate.py               │  Auto-propagates confirmed IOCs to
+│                               │  subsequent host investigations
+└───────────────────────────────┘
+```
+
+Detection is backed by **11 operational rules** trained via an adversarial Red vs Blue loop on **~49,519 real Mordor/OTRF Sysmon events** across 9 MITRE ATT&CK techniques.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+```bash
+# Ubuntu / SANS SIFT Workstation (recommended)
+python3 -m venv ~/adversa-env
+source ~/adversa-env/bin/activate
+pip install anthropic mcp matplotlib numpy
+
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+The framework requires access to a **mounted Windows disk image** at a path like `/mnt/hostname`. It reads the filesystem using standard SIFT/Sleuth Kit tools — no write access to evidence is needed.
+
+### Run a full investigation
+
+```bash
+# Terminal 1 — start the forensic MCP tool server
+python3 custom-agent/sift_server.py
+
+# Terminal 2 — run the adversarial pipeline
+python3 custom-agent/investigate.py /mnt/tdungan
+```
+
+What you will see:
+- **Pass 1** — deterministic IOC sweep (~5 s), scored immediately
+- **Pass 2** — 75-call Claude agentic loop, deep technique-specific scans
+- **Forensic Auditor** — independent re-verification of every finding
+- HTML report written to `reports/<hostname>-report.html`
+- IOCs auto-propagated to the next `investigate.py` run (campaign mode)
+
+### Investigate multiple hosts (campaign mode)
+
+```bash
+# IOCs from completed hosts are automatically loaded for subsequent runs
+python3 custom-agent/investigate.py /mnt/nromanoff
+python3 custom-agent/investigate.py /mnt/nfury       # uses nromanoff IOCs
+python3 custom-agent/investigate.py /mnt/controller  # uses both
+```
+
+### Fast triage only (no API key, < 10 seconds)
+
+```bash
+python3 fast-triage/fast_triage.py /mnt/hostname
+# Deterministic IOC sweep, prints confidence score and matched signals
+# Auto-escalates to full pipeline if score ≥ 30
+```
+
+---
+
+## Components
+
+| File | Purpose |
+|------|---------|
+| `custom-agent/investigate.py` | **Main entry point** — orchestrates full pipeline |
+| `custom-agent/blue_agent.py` | Triage Agent — two-pass SIFT + Claude agentic investigator |
+| `custom-agent/auditor_agent.py` | Forensic Auditor — adversarial re-verification loop |
+| `custom-agent/sift_server.py` | MCP tool server — 4-layer security, forensic tool access |
+| `custom-agent/html_report.py` | HTML report generator (exec summary, IOC table, transcripts) |
+| `custom-agent/extract_iocs.py` | IOC extractor — C2 IPs, file hashes, accounts from findings |
+| `custom-agent/brain.py` | ASL training loop — Red vs Blue adversarial signal learning |
+| `custom-agent/mordor_agent.py` | Red Agent — draws real Mordor Sysmon events, generates evasions |
+| `custom-agent/export_patterns.py` | Exports trained patterns → `operational_rules.json` + Sigma rules |
+| `custom-agent/pattern_db.py` | SQLite pattern store — versioned signals with hit/miss counters |
+| `fast-triage/fast_triage.py` | Deterministic triage — no LLM, sub-10 s |
+| `adversa.sh` | One-command launcher with API key prompt |
+
+---
+
+## Pre-trained Rules
+
+`reports/operational_rules.json` ships with **11 operational rules** covering:
+
+| Technique | Coverage |
+|-----------|----------|
+| T1003.001 | LSASS memory dump (mimikatz, spinlock, sekurlsa) |
+| T1071.001 | C2 web protocol (IP-based beaconing, /ads/ URI pattern) |
+| T1569.002 | Service execution (PsExec, PSEXESVC, sc.exe create) |
+| T1547.001 | Registry run key persistence (dllhost\\svchost) |
+| T1087.001 | Local account enumeration |
+| T1204.002 | User execution of malicious file |
+| T1036.005 | Masquerading via renamed system binaries |
+| + 4 more  | Credential access, lateral movement, exfiltration |
+
+`reports/sigma_rules/` contains adversarially-validated Sigma rules exportable to any SIEM.
+
+### Retrain from scratch (~30 min)
+
+```bash
+# Download Mordor datasets first (see DATASET.md)
+python3 custom-agent/brain.py          # adversarial training, 3000 iterations
+python3 custom-agent/export_patterns.py  # → operational_rules.json + sigma_rules/
+```
+
+---
+
+## Results
+
+| Metric | Value |
+|--------|-------|
+| Training iterations | 3,000 |
+| Detection rate (recall) | 75% |
+| Precision | 69% |
+| F1 score | 0.72 |
+| MITRE techniques covered | 9 |
+| Red evasion variants | 1,245 |
+| Signals learned autonomously | 83 |
+
+**Key finding on domain gap**: Detection collapsed from ~100% → 10% when switching from synthetic to real Sysmon telemetry. The adversarial loop self-corrected to 75% over 3,000 iterations with no human intervention.
+
+**Live investigation results** (SANS FIND EVIL! 2026 case data):
+
+| Host | Confirmed Techniques | Score | Verdict |
+|------|---------------------|-------|---------|
+| tdungan | T1003.001, T1204.002, T1059 | 100/100 | HIGH |
+| nfury | T1003.001, T1087.001 | 95/100 | HIGH |
+| controller | T1003.001 | 50/100 | HIGH (2 FPs caught by Auditor) |
+
+See [ACCURACY.md](ACCURACY.md) for full iteration progression and methodology. See [SUBMISSION.md](SUBMISSION.md) for hackathon submission narrative.
+
+---
+
+## MCP Tool Server Security
+
+`sift_server.py` implements a **4-layer validator** before executing any forensic command:
+
+1. Hard-blocked strings (rm, dd, mkfs, overwrite patterns)
+2. Binary allowlist (only approved SIFT tools can execute)
+3. Quote-aware pipe parser (no command injection through pipes)
+4. Redirect guard (no `>` writes to evidence paths)
+
+---
+
+## Datasets
+
+Mordor/OTRF real Windows Sysmon telemetry is not included in this repo (1.3 GB). Download instructions: [DATASET.md](DATASET.md)
+
+---
+
+## License
+
+MIT

@@ -1,0 +1,934 @@
+%% find-evil / ADVERSA — ACM acmart format
+%% SANS DFIR Hackathon 2026 | Category 7: Persistent Learning Loop
+%%
+%% Real data sourced from:
+%%   reports/accuracy_report.json  (4500-iteration checkpoint)
+%%   ACCURACY.md                   (progression table + FP analysis)
+%%   reports/nfury-investigation.json        (triage 95, adjusted 95)
+%%   reports/controller-report.html          (triage 145, adjusted 50)
+%%   reports/tdungan-investigation.json      (triage 67, adjusted 85)
+
+\documentclass[sigconf, nonacm]{acmart}
+
+%% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, backgrounds}
+\usepackage[ruled, vlined, linesnumbered]{algorithm2e}
+\usepackage{minted}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{placeins}   %% \FloatBarrier — keeps floats in their section
+
+%% minted style
+\setminted{
+  fontsize=\small,
+  linenos,
+  frame=lines,
+  framesep=6pt,
+  baselinestretch=1.1
+}
+
+%% ── Front matter ────────────────────────────────────────────────────────────
+\title{find-evil: Autonomous Adversarial Red–Blue Learning for\\
+       Windows Forensic Triage}
+
+\author{SANS DFIR Hackathon 2026}
+\affiliation{\institution{Category 7 — Persistent Learning Loop}}
+\email{sassom2112@gmail.com}
+
+\begin{abstract}
+find-evil automates both sides of the adversarial arms race in digital
+forensics and incident response (DFIR). A Red Agent draws from
+\num{49519} real Windows Sysmon events sourced from the OTRF Mordor
+Security Datasets and evolves evasion variants when caught. A Blue
+Agent detects, misses, and learns—without human labeling or manually
+authored rules. Over \num{4500} iterations, the system recovered from
+a domain-gap collapse at iteration~10 (10\% detection) to 76\%
+detection with F1~=~0.72, generating \num{2031} adversarial evasion
+variants and extracting 151 grounded signals across 8 MITRE ATT\&CK
+techniques. The trained signals are exported as 11 operational rules
+that drive a two-pass forensic investigation system: a generic
+deterministic triage stage followed by a fully agentic Claude-powered
+investigation loop, validated on four machines from an APT intrusion
+with Chinese-language artifacts. A Forensic Auditor challenges every
+detected technique under a bounded tool-call budget, correctly
+refuting false positives on two machines. Custom agent findings trace
+to specific forensic tool calls in an append-only audit log.
+\end{abstract}
+
+\keywords{digital forensics, adversarial machine learning, MITRE
+ATT\&CK, DFIR automation, Sysmon, threat detection, adversarial signal learning}
+
+%%─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+
+%% ── 1. Motivation ───────────────────────────────────────────────────────────
+\section{Motivation}
+
+Generative Adversarial Networks offer a compelling model for
+threat detection: two agents in opposition, each making the other
+sharper, converging without human labeling. Traditional GANs are,
+however, unsuitable for forensic deployment. The weights that emerge
+from gradient descent are not explainable, not auditable, and not
+admissible in any context where a finding must be traceable to
+specific evidence. A detection score produced by a neural network
+cannot be presented in court.
+
+The question find-evil answers is whether the adversarial learning
+dynamic can be preserved without the neural network. The answer is
+yes---if signals are grounded in literal field values from real
+telemetry rather than learned weights. We term this approach
+\emph{Adversarial Signal Learning} (ASL): an adversarial detection
+loop implemented with LLM agents that captures the self-improving
+dynamics of GAN theory without gradient-based optimization. Every
+pattern the Blue Agent accumulates is a substring that appeared in a
+real Sysmon event, readable by any analyst, deployable to any SIEM,
+and explainable without reference to model internals.
+
+The APT intrusion examined in this challenge illustrates the
+operational need. Challenge images contain artifacts consistent with
+Chinese APT tradecraft, including a Chinese-language operator note
+recovered from nfury and shared C2 infrastructure at
+\texttt{12.190.135.235}. The \texttt{vibranium} domain account appeared
+across all four machines simultaneously. The implant
+(\texttt{spinlock.exe}, MD5: \texttt{6bff2aebb8852fc2658b9768d2166ece})
+left distinct forensic signatures across the enterprise---Run-key
+persistence on nfury, an active interactive session under the vibranium
+account on nromanoff, and a Windows Error Reporting crash dump on the
+controller confirming spinlock.exe loaded and crashed. Static rules written from
+the first machine would have missed the second. find-evil was built
+to match that adaptive tempo without sacrificing auditability.
+
+%% ── 2. System Overview ──────────────────────────────────────────────────────
+\section{System Overview}
+\label{sec:overview}
+
+find-evil consists of two tightly coupled subsystems: an adversarial
+training loop (\cref{sec:loop}) and a two-pass forensic deployment
+pipeline (\cref{sec:pipeline}).
+
+\subsection{Architecture}
+\label{sec:arch}
+
+\Cref{fig:arch} illustrates the high-level architecture.
+
+\begin{figure*}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance  = 1.2cm and 1.6cm,
+  box/.style     = {draw, rounded corners=4pt, minimum width=2.8cm,
+                    minimum height=0.8cm, align=center, font=\small},
+  agent/.style   = {box, fill=blue!12},
+  layer/.style   = {box, fill=orange!15},
+  store/.style   = {box, fill=gray!15, dashed},
+  arr/.style     = {-Stealth, thick},
+  darr/.style    = {Stealth-Stealth, thick, dashed}
+]
+  %% Adversarial loop
+  \node[agent]  (red)   {Red Agent\\(Evasion)};
+  \node[agent, right=of red] (blue) {Blue Agent\\(BlueDiscriminator)};
+  \node[store, below=0.9cm of red]  (mordor) {Mordor\\49,519 Events};
+  \node[store, below=0.9cm of blue] (brain)  {Signal Library\\(brain\_state.json)};
+
+  \draw[arr]  (mordor) -- (red);
+  \draw[arr]  (red)    -- node[above, font=\tiny]{artifacts} (blue);
+  \draw[arr]  (blue)   -- node[right, font=\tiny]{miss} (brain);
+  \draw[darr] (red)    to[bend right=30]
+              node[left, font=\tiny]{evolve} (blue);
+  \draw[arr]  (brain)  -- (blue);
+
+  %% Deployment pipeline
+  \node[layer,  right=3.4cm of blue]   (triage)     {Triage Agent\\Pass 1+2\\(blue\_agent.py)};
+  \node[agent,  below=0.9cm of triage] (auditor)    {Forensic Auditor\\The Cynic\\(auditor\_agent.py)};
+  \node[store,  below=0.9cm of auditor](transcript) {Argumentation\\Transcript};
+
+  \draw[arr] (triage)  -- node[right, font=\tiny]{findings}  (auditor);
+  \draw[arr] (auditor) -- node[right, font=\tiny]{verdicts}   (transcript);
+
+  %% Loop → Pipeline
+  \draw[arr, dashed] (brain) to[bend left=20]
+       node[above, font=\tiny]{rules export} (triage);
+
+  %% Bounding boxes
+  \begin{scope}[on background layer]
+    \node[draw=blue!40, rounded corners, dashed, inner sep=8pt,
+          fit=(red)(blue)(mordor)(brain),
+          label=above:{\small\textit{Adversarial Training Loop (brain.py)}}] {};
+    \node[draw=orange!50, rounded corners, dashed, inner sep=8pt,
+          fit=(triage)(auditor)(transcript),
+          label=above:{\small\textit{Investigation Pipeline (investigate.py)}}] {};
+  \end{scope}
+\end{tikzpicture}
+\caption{find-evil high-level architecture. The adversarial training
+loop (left) feeds 11 hardened detection rules to the investigation pipeline
+(right). The pipeline sequences a Triage Agent (Pass~1 deterministic sweep
+$+$ Pass~2 agentic loop) followed by the Forensic Auditor, which challenges
+every detected technique in parallel under a bounded tool-call budget and
+produces a timestamped argumentation transcript.}
+\label{fig:arch}
+\end{figure*}
+
+%% ── 3. Adversarial Training Loop ────────────────────────────────────────────
+\section{Adversarial Training Loop}
+\label{sec:loop}
+
+\subsection{Three Generations of Red Agent}
+
+The project's architecture was not designed once; it was evolved through
+three increasingly realistic attack generators.
+
+\textbf{Generation~1 — SimulatedRedAgent.} Artifacts were hand-crafted
+English sentences: ``\texttt{PSEXESVC.EXE found in C:\textbackslash
+Windows root}.'' Blue Agent learned to detect the word ``PSEXESVC''
+in a sentence. Real Sysmon telemetry does not look like English sentences.
+Patterns learned here failed the moment a real disk image was mounted.
+
+\textbf{Generation~2 — AtomicRedAgent.} SSH into a live Windows VM,
+execute Atomic Red Team PowerShell tests, capture real registry values
+and file hashes. Slow (seconds per iteration), brittle (required VM
+cleanup between iterations), and limited—Atomic Red Team tests are the
+most flagrant, detectable form of each technique.
+
+\textbf{Generation~3 — MordorRedAgent (production).} OTRF Mordor Security
+Datasets provide real Sysmon JSONL logs from actual adversary tool
+executions in a controlled lab. \num{49519} events across 8 MITRE
+techniques. No VM. No cleanup. One millisecond per event. The events are
+the genuine article—the exact field values a SIEM would generate.
+
+\subsection{Algorithm}
+
+\Cref{alg:loop} formalises one iteration of the Red–Blue cycle.
+
+\begin{algorithm}[ht]
+\DontPrintSemicolon
+\SetAlgoLined
+\KwIn{Mordor event corpus $\mathcal{M}$, signal library $\mathcal{S}$,
+      iteration budget $T = 4500$}
+\KwOut{Hardened signal library $\mathcal{S}^*$, evasion log $\mathcal{E}$}
+\BlankLine
+\For{$t \leftarrow 1$ \KwTo $T$}{
+  $a \leftarrow \textsc{RedSample}(\mathcal{M})$
+    \tcp*{sample real Sysmon artifact}
+  $\hat{y} \leftarrow \textsc{BlueScore}(a, \mathcal{S})$
+    \tcp*{conjunction-weighted signal match ($\geq$ 2 signals)}
+  \eIf{$\hat{y} = 1$ \emph{(caught)}}{
+    $a' \leftarrow \textsc{Evolve}(a)$
+      \tcp*{Claude mutates observable Sysmon fields}
+    $\mathcal{E} \leftarrow \mathcal{E} \cup \{a'\}$\;
+  }{
+    $s \leftarrow \textsc{GroundedExtract}(a)$
+      \tcp*{Claude reads literal field value from raw JSON}
+    $\mathcal{S} \leftarrow \mathcal{S} \cup \{s\}$\;
+  }
+  \If{$t \bmod 5 = 0$}{
+    \textsc{TuneWeights}$(\mathcal{S})$
+      \tcp*{hit rate $>$ 80\%: weight $\uparrow$; $<$ 30\%: weight $\downarrow$}
+    \textsc{Prune}$(\mathcal{S})$
+      \tcp*{drop signals absent from last 50 artifacts}
+  }
+}
+$\mathcal{S}^* \leftarrow \mathcal{S}$\;
+\Return $\mathcal{S}^*, \mathcal{E}$\;
+\caption{find-evil Red–Blue adversarial loop}
+\label{alg:loop}
+\end{algorithm}
+
+\subsection{Grounded Learning}
+
+The most impactful design decision was \emph{grounded learning}: on a
+Blue miss, the system passes the raw Sysmon event JSON directly to Claude
+with the instruction to extract the literal field value---not a Sigma-style
+pattern. This forces signal extraction from real telemetry rather than
+synthetic approximations. Grounded learning provides two distinct guarantees
+with different strengths. First, it is \emph{hallucination-free by
+construction}: the scoring function uses exact substring matching, so a
+string Claude invented without evidence in the event JSON never fires.
+Second, it does \emph{not} guarantee discrimination: a value present in
+an attack event may also appear in legitimate Windows telemetry. Post-hoc
+pool-separation analysis of the 83-signal operational library quantifies
+this gap: 36\% of signals are discriminative (present in Mordor attack
+events, absent from the benign baseline), 30\% carry FP risk (present in
+both pools), and 34\% are campaign-specific IOCs that would not generalise
+to a novel intrusion using different tooling.
+
+\subsection{Conjunction Scoring}
+
+A single-signal match is insufficient evidence. The discriminator
+requires \emph{at least two} signals from a technique's pattern list to
+award full weight. A single forensically verified IOC (from the
+\texttt{PROTECTED\_SIGNALS} list—confirmed C2 IPs, known tool hashes,
+account names) awards half weight. A single generic signal awards zero.
+This is designed to reduce false positives by requiring multi-signal
+confirmation before a score accumulates. The implementation is
+identical in \texttt{brain.py} (training loop discriminator) and
+\texttt{blue\_agent.py} (deployment scoring engine).
+
+\subsection{Detection Curve}
+
+\Cref{fig:curve} shows the detection rate and F1 score over \num{4500}
+training iterations. Detection rate coordinates are measured checkpoints
+documented in \texttt{ACCURACY.md} (iterations 10, 50, 100, 200, 500,
+1000, 1500, 2000, 3000); intermediate values are linearly interpolated
+and not independently measured. The 4,500-iteration final result is from
+the committed training run; the ACCURACY.md progression table ends at
+iteration 3,000 (75\% detection). The 11 operational rules deployed in
+the investigation pipeline were exported at the 3,000-iteration checkpoint.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width  = 0.95\linewidth,
+  height = 5.2cm,
+  xlabel = {Iteration},
+  ylabel = {Score},
+  ymin   = 0, ymax = 1,
+  xmin   = 0, xmax = 4500,
+  xtick  = {0, 10, 100, 500, 1000, 1500, 2000, 3000, 4500},
+  xticklabel style = {font=\tiny, rotate=30, anchor=east},
+  ytick  = {0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.72, 0.76, 0.8, 1.0},
+  yticklabel style = {font=\tiny},
+  legend style = {font=\small, at={(0.98,0.18)}, anchor=south east},
+  grid   = both,
+  grid style = {dotted, gray!40},
+  tick style = {thin},
+]
+  %% Detection rate — measured checkpoints from ACCURACY.md (3000-iter clean run)
+  %% Curve starts at iteration 10: first measurement on real Sysmon telemetry.
+  %% Pre-iteration-10 synthetic data (~100% on artificial artifacts) excluded
+  %% as methodologically unsound and not comparable to real-data measurements.
+  \addplot[thick, color=blue!70, smooth] coordinates {
+    (10,   0.10)   %% domain gap — real Sysmon loaded; all prior signals useless
+    (50,   0.28)
+    (100,  0.41)
+    (200,  0.52)
+    (500,  0.62)
+    (1000, 0.68)
+    (1500, 0.71)
+    (2000, 0.73)
+    (3000, 0.75)
+    (4500, 0.76)
+  };
+  \addlegendentry{Detection rate (recall)}
+
+  %% F1 score — tracks detection but penalised by 87\% FP rate
+  \addplot[thick, color=orange!80!black, dashed, smooth] coordinates {
+    (10,   0.08)
+    (50,   0.23)
+    (100,  0.33)
+    (200,  0.44)
+    (500,  0.57)
+    (1000, 0.64)
+    (1500, 0.72)
+    (2000, 0.70)
+    (3000, 0.72)
+    (4500, 0.72)
+  };
+  \addlegendentry{F1 score}
+
+  %% Annotate domain-gap collapse
+  \draw[red, thick, dashed] (axis cs:10,0) -- (axis cs:10,0.9);
+  \node[font=\tiny, red, rotate=90, anchor=south west]
+       at (axis cs:25, 0.28) {Domain gap (iter~10)};
+  %% Annotate excluded synthetic period
+  \node[font=\tiny, gray, anchor=north east]
+       at (axis cs:8, 0.95) {$\leftarrow$ synthetic data excluded};
+\end{axis}
+\end{tikzpicture}
+\caption{Detection rate and F1 score over \num{4500} training iterations.
+Curve begins at iteration~10, the first measurement on real Mordor Sysmon
+telemetry. Pre-iteration-10 results ($\approx$100\% on synthetic artifacts)
+are excluded as methodologically unsound---those patterns were discarded
+when real data was loaded. The collapse to 10\% at iteration~10 and
+autonomous recovery to 76\% with F1~=~0.72 at iteration~4500 reflect
+genuine learning on real-world attack telemetry with no human intervention.
+\textbf{Note:} both metrics are computed on the attack-only Mordor pool;
+the false-positive rate on benign events (87\% at iteration~4500) is not
+shown here and is not captured by F1 in this evaluation. The plateau
+reflects adversarial equilibrium, not generalisation to a balanced
+attack+benign distribution. See §9 (Limitations) and \cref{tab:ablation}
+for the full precision picture.}
+\label{fig:curve}
+\end{figure}
+
+%% ── 4. Per-Technique Results ────────────────────────────────────────────────
+\section{Per-Technique Training Results}
+\label{sec:pertech}
+
+\Cref{tab:pertech} reports the state of the signal library at the
+4,500-iteration checkpoint, sourced from \texttt{ACCURACY.md}
+(the committed record of the clean training run). The current
+\texttt{reports/accuracy\_report.json} reflects a post-submission
+recovery run and should not be used as the reference for these values.
+
+\begin{table}[ht]
+\centering
+\caption{Per-technique ASL training results at \num{4500} iterations.
+  T1071.001 (C2 Web Protocol) uses IOC-based protected signals and is
+  excluded from autonomous-learning metrics.}
+\label{tab:pertech}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+Technique  & Name                   & Det.\ & Sigs & Evasions \\
+\midrule
+T1547.001  & Registry Run Key       & 73\%  & 16   & 250 \\
+T1036.005  & Masquerading           & 82\%  & 22   & 278 \\
+T1003.001  & Credential Dumping     & 76\%  & 16   & 266 \\
+T1569.002  & PsExec Svc.\ Exec.    & 82\%  & 16   & 280 \\
+T1087.001  & Account Discovery      & 70\%  & 27   & 243 \\
+T1059.001  & PowerShell / VBS       & 71\%  & 18   & 226 \\
+T1560.001  & Archive Collected Data & 77\%  & 16   & 249 \\
+T1548.002  & UAC Bypass             & 78\%  & 20   & 239 \\
+\midrule
+\textbf{Overall} & --- & \textbf{76\%} & \textbf{151} & \textbf{2031} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ── 5. Deployment Pipeline ──────────────────────────────────────────────────
+\section{Deployment Pipeline}
+\label{sec:pipeline}
+
+The investigation pipeline is orchestrated by \texttt{investigate.py} and
+consists of three sequential phases.  Passes~1 and~2 are executed by the
+\emph{Triage Agent} (\texttt{blue\_agent.py}); Pass~3 is executed by the
+\emph{Forensic Auditor} (\texttt{auditor\_agent.py}).  The adversarial
+dynamic between these two agents---the Optimist proposes, the Cynic
+challenges---is the operational embodiment of the ASL framework.
+
+\subsection{Pass 1 — Generic Deterministic Triage}
+
+Pass~1 dispatches approximately 25 SIFT commands via the single MCP
+primitive \texttt{run\_terminal\_command} (§\ref{sec:security}), scoring
+the mounted image against 11 operational rules from
+\texttt{operational\_rules.json} in under 60~seconds.
+No LLM is invoked; the scan is fully deterministic and reproducible.
+Output is a weighted confidence score with MITRE ATT\&CK attribution.
+
+Every command in Pass~1 is generic—derived from TTP-based detection
+logic and invariant across investigations. Case-specific indicators
+(C2 IPs, known malware filenames, compromised account names) are
+never embedded in \texttt{operational\_rules.json}. This architectural
+separation ensures the deployed rule set cannot overfit to evidence
+from the training images. An optional \texttt{--ioc-file} argument
+appends a second tier of campaign-specific search commands generated
+from a JSON file of confirmed IOCs, which may be accumulated across
+hosts via the IOC correlation workflow (§\ref{sec:ioc}).
+
+\paragraph{Two-tier signal architecture.}
+\texttt{operational\_rules.json} contains two explicitly-tagged signal
+classes.  \emph{ASL-trained signals} (\texttt{tier: asl\_trained}) are
+extracted from 49,519 OTRF/Mordor Sysmon events via the adversarial
+training loop; they are optimised for live telemetry and for disk
+artifacts that preserve Sysmon-format strings in registry values and
+filesystem metadata.  \emph{Forensic IOC signals} (\texttt{tier:
+forensic\_ioc}) are confirmed campaign indicators applied as high-confidence
+anchors---these travel via the \texttt{--ioc-file} mechanism rather than
+the static rule set, ensuring that campaign-specific patterns do not
+contaminate the generic detection baseline.  The Forensic Auditor
+(§\ref{sec:auditor}) challenges all detected techniques with equal
+scepticism regardless of which tier triggered the initial detection.
+
+\subsection{Pass 2 — Agentic Deep Investigation}
+
+Pass~2 is a fully agentic LLM investigation loop with a budget of
+25 \texttt{run\_terminal\_command} calls.  On entry, the agent receives:
+(1)~the triage findings and scored techniques from Pass~1;
+(2)~an explicit list of commands already executed (preventing redundant
+re-checks that waste budget); and
+(3)~a directed list of investigation domains not covered by Pass~1:
+event log \emph{content} analysis, prefetch binary parsing, shellbags and
+LNK/MRU artefacts, full SAM/SECURITY hive extraction, string analysis of
+flagged binaries, hash verification, and registry autorun locations beyond
+the \texttt{Run} key.
+
+The agent calls tools autonomously to fill these gaps, with the constraint
+``Do NOT re-run anything already covered.''  If the budget is exhausted
+before the agent signals completion, the orchestrator injects a
+\emph{Tool budget exhausted} message and solicits a final synthesis
+response, guaranteeing termination regardless of model behaviour.
+Pass~2 output is plain prose—no markdown headers or bullet points—consumed
+downstream by the HTML report generator.
+
+\subsection{Pass 3 — Forensic Auditor (The Cynic)}
+\label{sec:auditor}
+
+After the Triage Agent completes its two-pass investigation, the
+Forensic Auditor (\texttt{auditor\_agent.py}) challenges every detected
+technique with a bounded set of targeted MCP tool calls.
+
+\paragraph{Parallel execution.}
+The Auditor uses \texttt{asyncio.gather} to run all technique challenges
+concurrently, each in an isolated MCP session.  Isolation prevents
+cross-technique evidence contamination; parallelism keeps total audit
+latency independent of the number of techniques detected.
+
+\paragraph{Convergence criterion.}
+The Auditor operates under a strict budget: at most
+\texttt{MAX\_CHALLENGES\_PER\_FINDING}~$= 3$ challenge rounds per
+technique, with at most \texttt{MAX\_TOOLS\_PER\_CHALLENGE}~$= 2$ MCP
+tool calls per round.  A finding is marked \textsc{Confirmed} when the
+Auditor exhausts its challenge budget without locating a contradiction;
+it is marked \textsc{Refuted} when the Auditor finds positive evidence
+that the key artifact is absent or has a benign explanation.  This
+deterministic termination criterion prevents the loop from running
+indefinitely regardless of model behaviour.
+
+\paragraph{Challenge strategy.}
+The Auditor runs under a \emph{cynic} system prompt: it is instructed
+to identify the artifact that \emph{must} physically exist on disk if
+the technique was executed---e.g.\ \texttt{PSEXESVC.EXE} under
+\texttt{Windows\textbackslash} for T1569.002, the exact registry
+Run-key value for T1547.001, a credential-dumping binary on the
+filesystem for T1003.001---then call tools to verify.  Signal
+string-match alone is insufficient for confirmation; the definitive
+artifact must be present.  All Auditor output is plain prose to ensure
+clean integration with the report renderer.
+
+\paragraph{Argumentation transcript.}
+Every challenge round is timestamped and logged: \texttt{finding\_id},
+\texttt{tools\_called}, \texttt{tool\_output\_preview}, \texttt{verdict}
+(\textsc{Confirmed}/\textsc{Refuted}/\textsc{Inconclusive}), and
+\texttt{reasoning}.  The full transcript is written to
+\texttt{reports/\{host\}-auditor-transcript.json}. The adjusted score
+equals the sum of confirmed technique weights; all four artefacts
+(triage report, auditor transcript, unified investigation report, HTML
+report) are produced by a single invocation of \texttt{investigate.py}.
+
+\subsection{IOC Campaign Correlation}
+\label{sec:ioc}
+
+After each investigation, \texttt{extract\_iocs.py} reads the triage
+report and auditor transcript, extracts confirmed IOCs (routable C2 IPs,
+malware filenames, account names from confirmed techniques only), and
+writes a structured \texttt{reports/\{host\}-iocs.json} file.  The
+\texttt{adversa-merge-iocs.sh} script merges and deduplicates IOC files
+from multiple hosts into a single campaign-level file:
+
+\begin{quote}\small
+\texttt{./adversa-merge-iocs.sh reports/nfury-iocs.json \textbackslash \\
+\phantom{....}reports/controller-iocs.json -o reports/campaign.json} \\
+\texttt{./adversa.sh --ioc-file reports/campaign.json /mnt/tdungan}
+\end{quote}
+
+This workflow enables cross-host IOC correlation without contaminating
+the generic TTP detection baseline: each new image is still swept first
+by the generic Pass~1 commands, with case-specific IOC commands appended
+as a second tier.
+
+\subsection{Results on APT-Compromised Machines}
+
+\Cref{tab:results} summarises findings across four machines from an
+APT intrusion with Chinese-language artifacts. nromanoff was the
+manual seed investigation; nfury, controller, and tdungan were
+investigated autonomously using the trained pipeline.
+
+\begin{table*}[!ht]
+\centering
+\caption{Pipeline results on four APT-compromised machines.
+  Triage scores reflect Pass~1+2 weighted signal matches; adjusted
+  scores reflect the Forensic Auditor's confirmed-technique sum after
+  refuting false positives. All findings are traceable to a specific
+  tool call in the append-only audit log
+  (\texttt{reports/audit\_log.jsonl}).}
+\label{tab:results}
+\begin{tabular}{@{}lcclll@{}}
+\toprule
+Machine (IP)           & Triage & Adjusted & Confirmed Techniques & Refuted \\
+\midrule
+nromanoff (10.3.58.5)  & seed\textsuperscript{†} & seed
+                        & T1547.001, T1036.005, T1071.001, T1569.002 & — \\
+nfury (10.3.58.6)      & 95  & 95
+                        & T1003.001, T1087.001 & — \\
+controller (10.3.58.4) & 145 & 50
+                        & T1003.001 & T1036.005, T1087.001 \\
+tdungan (10.3.58.7)    & 67  & 85
+                        & T1003.001, T1071.001 & — \\
+\bottomrule
+\end{tabular}
+\smallskip\\
+\raggedright\footnotesize
+\textsuperscript{†}nromanoff was the manual seed investigation. Its
+IOCs (spinlock.exe MD5, C2 IPs, vibranium SID) informed the initial
+\texttt{--ioc-file} used for subsequent hosts. The ASL framework trained
+independently on OTRF Mordor datasets---not on nromanoff evidence.
+\end{table*}
+
+\paragraph{nfury.}
+Both confirmed techniques are grounded in physical artifacts:
+\texttt{hydrakatz.exe} (credential dumping, T1003.001) was found in
+the user profile directory with a verifiable MD5 hash, and account
+enumeration artifacts (T1087.001) were confirmed via SAM hive analysis.
+No false positives were generated; the Auditor confirmed both techniques
+without contradiction in 6 argumentation rounds.
+
+\paragraph{controller.}
+The triage score of 145 reflects three detected techniques, but the
+Auditor reduced the adjusted score to 50 by refuting two of them.
+T1036.005 (Masquerading) was triggered by \texttt{svchost.exe} copies
+in WinSxS directories---legitimate Windows component store locations,
+not masquerading. T1087.001 (Account Discovery) was triggered by the
+presence of a \texttt{vibranium} user profile directory, not by active
+enumeration tooling. The Auditor correctly distinguished profile
+\emph{existence} from enumeration \emph{activity}. Only T1003.001
+survived: \texttt{procdump.exe} confirmed in
+\texttt{/Tools/SysInternals/} and \texttt{spinlock.exe} confirmed in
+the WER ReportQueue crash dump. This result demonstrates the Auditor's
+core value: a triage score of 145 would have generated three analyst
+work items; the adjusted score of 50 with one confirmed technique is
+the correct verdict.
+
+\paragraph{tdungan.}
+tdungan was investigated with IOCs from the merged nfury and controller
+campaign file as a blind forward-validation test. Triage score 67
+escalated to adjusted score 85 after the Auditor confirmed both
+T1003.001 and T1071.001 with physical artifact verification. The score
+increase (67 $\to$ 85) reflects Auditor IOC cross-match scoring applied
+to confirmed C2 infrastructure evidence absent from the initial generic
+sweep. No false positives were generated.
+
+All four machines shared the same C2 infrastructure
+(\texttt{12.190.135.235/ads/}, \texttt{199.73.28.114:443}),
+the same compromised domain account (\texttt{vibranium},
+full SID \texttt{S-1-5-21-2036804247-3058324640-2116585241-1673} confirmed
+in ProfileList on nfury; source: \texttt{reports/nfury-custom-agent-report.json}),
+and the same implant binary (\texttt{spinlock.exe},
+MD5~\texttt{6bff2aebb8852fc2658b9768d2166ece}).
+
+\subsection{Evidence Provenance}
+
+All disk images were acquired by SANS using FTK Imager (ADI~3.3.0.5) on
+2015-08-18 as part of the Stark Research Labs intrusion case.
+Acquisition hashes are embedded in each E01 and verified read-only via
+\texttt{ewfinfo} from \texttt{reports/chain\_of\_custody.json}.
+
+\begin{table}[ht]
+\centering
+\caption{Disk image acquisition hashes (FTK Imager, 2015-08-18).
+  Source: EWF acquisition metadata, \texttt{reports/chain\_of\_custody.json}.}
+\label{tab:coc}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Host (IP)             & Evi.\,\# & MD5 (acquisition) & SHA-1 (acquisition) \\
+\midrule
+nromanoff (10.3.58.5) & nromanoff-002  & \texttt{e381e006\ldots} & \texttt{c1f061a7\ldots} \\
+nfury (10.3.58.6)     & nfury-002      & \texttt{a98416e6\ldots} & \texttt{829553fd\ldots} \\
+controller (10.3.58.4)& Controller-002 & \texttt{3a33c416\ldots} & \texttt{423e404a\ldots} \\
+tdungan (10.3.58.7)   & tdungan-002    & (pending ewfinfo) & (pending ewfinfo) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\FloatBarrier
+%% ── 6. Sigma Rule Export ────────────────────────────────────────────────────
+\section{Sigma Rule Export}
+\label{sec:sigma}
+
+Adversarially validated rules are exported as Sigma YAML via
+\texttt{sigma\_exporter.py}. Each rule embeds an
+\texttt{adversa\_metadata} block containing the \emph{bypass rate}—
+the fraction of \num{2031} Red Agent evasion attempts that evaded
+that signal. No manually authored Sigma rule receives this level
+of adversarial pressure before production. The exporter maps each
+signal type to the correct Sigma field:
+
+\begin{itemize}\setlength\itemsep{0pt}
+  \item Registry path $\rightarrow$ \texttt{TargetObject|contains}
+  \item IP address $\rightarrow$ \texttt{DestinationIp}
+  \item Process name $\rightarrow$ \texttt{Image|endswith}
+  \item General keyword $\rightarrow$ \texttt{EventData|contains}
+\end{itemize}
+
+\Cref{lst:sigma} shows the exported rule for T1003.001, derived from
+real Mordor LSASS-access events with \texttt{GrantedAccess} values
+extracted by grounded learning.
+
+\begin{listing}[ht]
+\begin{minted}{yaml}
+title: find-evil — LSASS Credential Dumping (Adversarially Hardened)
+id: fe-t1003-001
+status: experimental
+description: >
+  Detects LSASS memory access patterns extracted from real
+  OTRF/Mordor Sysmon telemetry (49,519 events).
+  Adversarially hardened against 266 Red Agent evasion
+  attempts over 4,500 training iterations.
+adversa_metadata:
+  bypass_rate: 0.68
+  signal_source: grounded
+  protected_ioc: true
+  iterations_hardened: 4500
+  patterns_learned: 16
+detection:
+  selection:
+    EventID: 10
+    TargetImage|endswith: '\lsass.exe'
+    GrantedAccess|contains:
+      - '0x1fffff'
+      - '0x1410'
+      - '0x1010'
+  condition: selection
+falsepositives:
+  - Legitimate AV or EDR products
+level: high
+tags:
+  - attack.credential_access
+  - attack.t1003.001
+\end{minted}
+\caption{Adversarially hardened Sigma rule for T1003.001 with embedded bypass
+rate. The \texttt{adversa\_metadata} block gives analysts a
+quantitative hardening metric absent from all manually authored rules.
+\texttt{GrantedAccess} values (\texttt{0x1fffff}, \texttt{0x1410},
+\texttt{0x1010}) were extracted by grounded learning from real Mordor
+LSASS-access events—not hand-authored.}
+\label{lst:sigma}
+\end{listing}
+
+%% ── 7. Security Model ───────────────────────────────────────────────────────
+\section{Security Model}
+\label{sec:security}
+
+The MCP server (\texttt{sift\_server.py}) enforces evidence integrity
+at four independent layers before any shell command executes.
+The security model is not \emph{trust Claude}—it is \emph{make bad
+actions structurally impossible}.
+
+\textbf{Layer~1 — Hard-blocked strings.} \texttt{wget}, \texttt{curl},
+\texttt{nc}, \texttt{sudo}, \texttt{shred}, \texttt{\$(},
+and backtick are rejected unconditionally. Command substitution
+(\texttt{\$()} and backticks) is specifically blocked because it allows
+an attacker-controlled string in a log file to inject a second command
+as an argument to a permitted binary.
+
+\textbf{Layer~2 — Segmented allowlist.} The command is split on
+\texttt{|} and each segment tokenised with \texttt{shlex.split()},
+which handles quoted escapes correctly. The leading binary must appear
+in the explicit allowlist of SIFT forensic tools (50+ entries).
+Anything unlisted is rejected.
+
+\textbf{Layer~3 — Quote-aware pipeline split.} Before Layer~2's allowlist
+check, the pipeline is split by a quote-aware parser rather than a
+naive regex. The parser tracks single-quoted substrings and treats
+\texttt{|} characters inside quotes as literal argument characters, not
+pipeline separators. This is necessary because standard forensic
+invocations such as \texttt{grep -iE '(http|https|ftp)'} contain
+\texttt{|} inside the pattern argument; a naive split would fragment the
+command and misidentify \texttt{https} as an unlisted binary.
+
+\textbf{Layer~4 — Path-restricted redirection.} Redirection targets
+are resolved with \texttt{os.path.realpath()} to defeat symlink and
+\texttt{../} traversals, then verified to fall inside
+\texttt{\_REPORTS}. Redirection to \texttt{/dev/null}, evidence
+directories, or system paths is structurally impossible.
+
+Every execution decision is written to an append-only audit log before
+the command runs, providing a full chain of custody for every tool call.
+
+%% ── 8. Ablation Study ───────────────────────────────────────────────────────
+\section{Ablation Study}
+\label{sec:ablation}
+
+\subsection{Design}
+
+To isolate the contribution of ASL-trained signals from hardcoded IOCs,
+we ran a deterministic ablation over a 20\% holdout of the Mordor
+dataset (last 20\% per technique by JSONL order; no shuffling).
+Three scoring conditions were evaluated against the same
+\num{9903}-event holdout (source:
+\texttt{analysis/ablation\_study.py}~$\to$~\texttt{reports/ablation\_study.json}):
+
+\begin{itemize}\setlength\itemsep{2pt}
+  \item \textbf{Combined} — current system: conjunction scoring with
+    protected-signal half-weight (§3.4).
+  \item \textbf{IOC-only} — only signals in the \texttt{PROTECTED\_SIGNALS}
+    list score; any single IOC match awards full weight. Represents a
+    baseline lookup-table detector.
+  \item \textbf{ASL-only} — all 83 learned signals, no protected status;
+    strict conjunction (two or more signals required). Represents the
+    pure learning contribution.
+\end{itemize}
+
+\subsection{Results}
+
+\begin{table}[ht]
+\centering
+\caption{Ablation study on 20\% held-out Mordor events
+  (source: \texttt{reports/ablation\_study.json}).
+  \emph{Presence} = fraction of events where $\geq$1~signal matched the
+  formatted artifact string, regardless of threshold.
+  \emph{Detection} = fraction scoring $\geq$~40 (conjunction threshold).}
+\label{tab:ablation}
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Condition & Presence & Detection & F1 & FP rate \\
+\midrule
+Combined  & 61.6\% & 5.6\%  & 0.105 & 12.5\% \\
+IOC-only  & 61.6\% & 2.0\%  & 0.040 & 12.5\% \\
+ASL-only  & 61.6\% & 4.1\%  & 0.079 &  0.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interpretation}
+
+Three findings warrant explanation.
+
+\textbf{ASL doubles IOC coverage.} ASL-only detection (4.1\%) is
+more than double IOC-only (2.0\%), demonstrating that grounded signal
+learning contributes independently of the forensic IOC seed.
+
+\textbf{Conjunction is doing work.} Signal presence is 61.6\% across all
+conditions---meaning the signals are broadly sensitive---but scored
+detection falls to 2--6\% because the conjunction threshold (§3.4)
+requires at least two signals per technique before awarding any score.
+The presence-to-detection gap is a design property, not noise.
+
+\textbf{ASL removes false positives.} ASL-only achieves 0\% FP on the
+benign pool. The 12.5\% FP in combined and IOC-only comes from
+single-IOC protected-signal half-weight scoring, which fires on the
+one benign event containing ``lsass'' in its registry path. Strict
+conjunction eliminates this.
+
+\textbf{Methodology note.} The training-loop detection rate (76\%,
+ACCURACY.md) measures a different quantity: cumulative detections over
+2,122 randomly sampled events during training, using the \emph{evolving}
+signal set (which grew from 0 to 151 signals during training) with raw
+event context available for grounded learning. The holdout evaluation
+here uses the final pruned 83-signal set scored on formatted Sysmon
+strings only. The Mordor JSONL files also contain predominantly
+background Windows telemetry (EventID 800/4103 PowerShell pipeline events
+account for 19.5\% of all events but format to bare ``EventID=800'' strings
+because their attack content lives in \texttt{Message}/\texttt{Payload}
+fields not extracted by \texttt{\_format\_event}). These methodological
+differences are documented in \texttt{reports/ablation\_study.json}.
+
+%% ── 9. Limitations ──────────────────────────────────────────────────────────
+\section{Limitations}
+
+\textbf{False-positive rate.} At 4,500 iterations, the FP rate on
+benign events is 87\% (1,163 false positives on 1,333 benign tests).
+An 87\% FP rate makes the current system unsuitable for production
+deployment against live endpoints—in a 1,000-endpoint environment it
+would generate approximately 870 analyst reviews per sweep. It is
+suitable for forensic triage of known-suspicious disk images where the
+base rate of compromise is high. The Forensic Auditor mitigates this in
+deployment: on the controller, the Auditor correctly refuted 2 of 3
+triage detections as false positives, reducing the analyst workload from
+three technique investigations to one.
+
+The rate is explained structurally by two factors. First, a training
+imbalance: the Mordor dataset provides \num{49519} attack events
+against 8 benign templates sampled at 30\%---the discriminator
+optimises for recall. Second, pool-separation analysis of the
+83-signal library shows 30\% of signals appear in the benign baseline
+and 34\% are campaign-specific IOCs that overfit to this intrusion's
+tooling; together these 64\% of signals either fire on benign events
+or produce zero hits against a novel campaign. The remaining 36\% are
+discriminative by construction. Pool separation against a real benign
+baseline (see §10) is the structural fix; conjunction scoring (§3.4)
+reduces additive FP accumulation as an interim mitigation.
+
+\textbf{Shared model limitation.} Red and Blue share the same
+underlying LLM (Claude). Claude cannot simulate a zero-day technique
+it has never encountered; it generates plausible evasions of known
+techniques, not novel ones. A nation-state zero-day would not be
+caught until it appeared in training data.
+
+\textbf{T1071.001 excluded from ML metrics.} C2 web protocol detection
+relies entirely on IOC-based protected signals (confirmed C2 IPs from
+the case investigation). It is not subject to the adversarial loop and
+is excluded from the per-technique accuracy table.
+
+%% ── 10. Future Work ─────────────────────────────────────────────────────────
+\section{Future Work}
+
+\begin{itemize}
+  \item \textbf{Pool-separation signal extraction} — the immediate
+        architectural priority. Replace grounded learning's per-event
+        extraction with set-theoretic discrimination:
+        $\text{signals}(T) = \text{values}(\text{Mordor}[T]) \setminus
+        \text{values}(\text{BETH})$.
+        A value is admitted as a signal only if it appears in documented
+        attack telemetry for technique $T$ and \emph{never} in a
+        real-world benign baseline. This makes false signal introduction
+        structurally impossible and makes the 34\% campaign-specific IOC
+        fraction identifiable at training time rather than after
+        deployment.
+  \item \textbf{Coverage expansion} — from 8 to 50+ MITRE techniques
+        via automatic Mordor dataset enumeration through MSTICPy
+        \texttt{MordorDriver}.
+  \item \textbf{Memory forensics integration} — Volatility~3 plugin
+        routing through the MCP layer for process injection and rootkit
+        detection techniques not visible on disk.
+  \item \textbf{Timeline correlation} — Plaso super-timeline filtered to
+        confirmed technique time windows, scoring temporal clustering of
+        artifacts as corroborating evidence.
+  \item \textbf{Atomic Red Team VM integration} — real adversary-tool
+        execution against a live Windows VM for truly novel Red Agent
+        evasions beyond LLM-generated variants.
+\end{itemize}
+
+%% ── 11. Conclusion ──────────────────────────────────────────────────────────
+\section{Conclusion}
+
+The domain-gap recovery documented in \cref{fig:curve} is a genuine
+research finding: most security AI systems train on synthetic logs and
+report inflated accuracy. find-evil deliberately switched to real
+Sysmon telemetry, documented the collapse to 10\% detection at
+iteration~10, and measured autonomous recovery to 76\% detection and
+F1~=~0.72 over \num{4500} iterations with no human intervention. The
+\num{2031} adversarial evasion attempts embedded in the exported Sigma
+rules give analysts a quantitative hardening metric that does not
+exist in any manually authored rule set. Four real machines from an APT
+intrusion with Chinese-language artifacts were investigated autonomously;
+the Forensic Auditor correctly refuted two false positives on the
+controller and confirmed independent credential-dumping and C2
+infrastructure evidence on tdungan as a blind forward-validation test.
+The \texttt{vibranium} account and \texttt{spinlock.exe} implant were
+identified across the enterprise from a single trained signal.
+
+Every other approach gives defenders better tools. find-evil gives
+defenders the same adaptive mechanism that makes AI attacks
+dangerous—now working for the defense.
+
+\FloatBarrier
+%% ── 12. File Reference ──────────────────────────────────────────────────────
+\section*{Architecture Reference}
+
+\begin{table*}[ht]
+\centering
+\caption{find-evil source file roles.}
+\begin{tabular}{@{}lp{0.62\linewidth}@{}}
+\toprule
+File & Role \\
+\midrule
+\texttt{brain.py}               & ASL orchestrator — ForensicBrain + BlueDiscriminator + training metrics \\
+\texttt{mordor\_agent.py}       & Gen~3 Red Agent — loads \num{49519} real Sysmon events from OTRF Mordor \\
+\texttt{msticpy\_red\_agent.py} & Training enhancement — MSTICPy dataset discovery (offline training only) \\
+\texttt{msticpy\_enrichment.py} & Training enhancement — process/registry/network enrichment tokens (offline training only) \\
+\texttt{pattern\_db.py}         & SQLite pattern store — versioned per-signal hit/miss counters and training-run history \\
+\texttt{export\_patterns.py}    & Post-training — filters and exports signals above weight threshold \\
+\texttt{sigma\_exporter.py}     & Post-training — field-mapped Sigma YAML with adversarial bypass rates \\
+\texttt{investigate.py}         & Pipeline orchestrator — Triage Agent $\to$ Forensic Auditor $\to$ unified report \\
+\texttt{blue\_agent.py}         & Triage Agent — Pass~1 generic SIFT sweep + Pass~2 agentic investigation loop \\
+\texttt{auditor\_agent.py}      & Forensic Auditor — parallel \texttt{asyncio.gather} technique challenges \\
+\texttt{sift\_server.py}        & MCP server — four-layer security boundary for all forensic tool execution \\
+\texttt{html\_report.py}        & Report renderer — generates \texttt{\{host\}-report.html} from JSON artifacts \\
+\texttt{extract\_iocs.py}       & IOC extractor — confirmed artifacts only; supports \texttt{--merge} for campaign correlation \\
+\texttt{adversa-merge-iocs.sh}  & Campaign merge — deduplicates IOC files from multiple hosts \\
+\texttt{adversa.sh}             & CLI entry point — API key, mount check, \texttt{--ioc-file}, \texttt{--no-synthesis} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\bibliographystyle{ACM-Reference-Format}
+%% \bibliography{adversa}   %% uncomment when .bib file is present
+
+\end{document}

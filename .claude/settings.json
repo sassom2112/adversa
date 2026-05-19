@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); if echo \"$cmd\" | grep -qE 'rm -rf|shred|dd if=|mkfs|> ?/dev/'; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"BLOCKED: destructive command — evidence integrity protected\"}}'; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mkdir -p reports && jq -c '{timestamp: (now | todate), tool: .tool_name, input: (.tool_input.command // .tool_input.file_path // \"\"), success: (.tool_response.success // null)}' >> reports/audit_log.jsonl 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

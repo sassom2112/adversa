@@ -1,0 +1,182 @@
+{
+  "generated_at": "2026-05-14T03:08:46.339186+00:00",
+  "gan_iteration": 3000,
+  "rules": {
+    "T1547.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1547_001.yml",
+      "signal_count": 6,
+      "buckets": {
+        "registry": 2,
+        "ip": 0,
+        "keyword": 4
+      },
+      "validation": {
+        "total_evasions": 148,
+        "bypassed": 131,
+        "bypass_rate": 0.885,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "Registry Run key modified via reg.exe with handle close 4658",
+          "Registry Run key persistence via reg.exe add HKCU\\Software\\Microsoft\\Windows\\Cur",
+          "Registry Run key persistence via reg.exe add HKCU\\Software\\Microsoft\\Windows\\Cur"
+        ]
+      }
+    },
+    "T1036.005": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1036_005.yml",
+      "signal_count": 6,
+      "buckets": {
+        "registry": 2,
+        "ip": 0,
+        "keyword": 4
+      },
+      "validation": {
+        "total_evasions": 171,
+        "bypassed": 80,
+        "bypass_rate": 0.468,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "Registry key access: SOFTWARE\\Policies\\Microsoft\\SystemCerts",
+          "Registry access to SOFTWARE\\Policies\\Microsoft\\SystemCerts",
+          "Registry modify HKCU\\Software\\Microsoft\\SystemCerts\\Root\\Certificates"
+        ]
+      }
+    },
+    "T1003.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1003_001.yml",
+      "signal_count": 9,
+      "buckets": {
+        "registry": 1,
+        "ip": 0,
+        "keyword": 8
+      },
+      "validation": {
+        "total_evasions": 159,
+        "bypassed": 108,
+        "bypass_rate": 0.679,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "CreateRemoteThread TargetProcess lsass.exe SourceImage rundll32",
+          "NtWriteVirtualMemory to pid 672 via syscall from unsigned dll",
+          "Source=svchost.exe | Target=lsass.exe | Access=0x1000 | EventID=10"
+        ]
+      }
+    },
+    "T1071.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1071_001.yml",
+      "signal_count": 3,
+      "buckets": {
+        "registry": 0,
+        "ip": 2,
+        "keyword": 1
+      },
+      "validation": {
+        "total_evasions": 0,
+        "bypassed": 0,
+        "bypass_rate": 0.0,
+        "adversarially_validated": true,
+        "note": "no evasions to test"
+      }
+    },
+    "T1569.002": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1569_002.yml",
+      "signal_count": 8,
+      "buckets": {
+        "registry": 1,
+        "ip": 0,
+        "keyword": 7
+      },
+      "validation": {
+        "total_evasions": 173,
+        "bypassed": 148,
+        "bypass_rate": 0.855,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "Image=C:\\Windows\\System32\\svchost.exe | TargetObject=HKLM\\System\\CurrentControlS",
+          "svchost.exe accessing lsass.exe with PROCESS_QUERY_LIMITED_INFO",
+          "svchost.exe spawned rundll32 comsvcs MiniDump PID 672"
+        ]
+      }
+    },
+    "T1087.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1087_001.yml",
+      "signal_count": 18,
+      "buckets": {
+        "registry": 1,
+        "ip": 0,
+        "keyword": 17
+      },
+      "validation": {
+        "total_evasions": 162,
+        "bypassed": 85,
+        "bypass_rate": 0.525,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "Loaded psmsvc_ext.dll via rundll32 for account enumeration",
+          "Account enumeration via net.exe user query to local SAM",
+          "svchost.exe registry access CurrentControlSet\\Services\\LanmanServer"
+        ]
+      }
+    },
+    "T1059.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1059_001.yml",
+      "signal_count": 8,
+      "buckets": {
+        "registry": 0,
+        "ip": 0,
+        "keyword": 8
+      },
+      "validation": {
+        "total_evasions": 139,
+        "bypassed": 108,
+        "bypass_rate": 0.777,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "powershell.exe -ep bypass -c IEX(gc C:\\temp\\sv_module.ps1)",
+          "Image=C:\\Windows\\System32\\netsh.exe|EventID=7|ImageLoaded=iphlpapi.dll",
+          "powershell -c \"& (gcm I*e*-E*) (gc script.ps1)\""
+        ]
+      }
+    },
+    "T1560.001": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1560_001.yml",
+      "signal_count": 6,
+      "buckets": {
+        "registry": 1,
+        "ip": 0,
+        "keyword": 5
+      },
+      "validation": {
+        "total_evasions": 145,
+        "bypassed": 101,
+        "bypass_rate": 0.697,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "svchost.exe accessing lsass.exe with 0x0410 query rights",
+          "File=C:\\Users\\jsmith\\AppData\\Local\\Temp\\cache_backup.dat",
+          "Process accessed archive with mask 0x1f01ff for compression ops"
+        ]
+      }
+    },
+    "T1548.002": {
+      "file": "/home/sansforensics/find-evil-2026/custom-agent/../reports/sigma_rules/t1548_002.yml",
+      "signal_count": 9,
+      "buckets": {
+        "registry": 2,
+        "ip": 0,
+        "keyword": 7
+      },
+      "validation": {
+        "total_evasions": 148,
+        "bypassed": 92,
+        "bypass_rate": 0.622,
+        "adversarially_validated": false,
+        "bypass_examples": [
+          "Image=C:\\windows\\System32\\cmd.exe | TargetObject=HKLM\\SOFTWARE\\Classes\\ms-settin",
+          "Registry modify HKCU\\Software\\Classes\\mscfile\\shell\\open\\command",
+          "Image=C:\\Windows\\System32\\conhost.exe | EventID=7 | Host=WS05"
+        ]
+      }
+    }
+  }
+}

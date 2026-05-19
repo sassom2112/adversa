@@ -1,0 +1,515 @@
+{
+  "generated": "2026-05-15T19:41:59.847117+00:00",
+  "eventid_distribution": {
+    "10": {
+      "count": 8833,
+      "pct": 0.178
+    },
+    "12": {
+      "count": 8461,
+      "pct": 0.171
+    },
+    "800": {
+      "count": 5609,
+      "pct": 0.113
+    },
+    "4658": {
+      "count": 4126,
+      "pct": 0.083
+    },
+    "4103": {
+      "count": 4054,
+      "pct": 0.082
+    },
+    "7": {
+      "count": 3817,
+      "pct": 0.077
+    },
+    "5156": {
+      "count": 2195,
+      "pct": 0.044
+    },
+    "4656": {
+      "count": 2073,
+      "pct": 0.042
+    },
+    "13": {
+      "count": 2036,
+      "pct": 0.041
+    },
+    "4690": {
+      "count": 2021,
+      "pct": 0.041
+    },
+    "4663": {
+      "count": 1827,
+      "pct": 0.037
+    },
+    "5158": {
+      "count": 1032,
+      "pct": 0.021
+    },
+    "4703": {
+      "count": 689,
+      "pct": 0.014
+    },
+    "3": {
+      "count": 469,
+      "pct": 0.009
+    },
+    "11": {
+      "count": 260,
+      "pct": 0.005
+    }
+  },
+  "methodology": {
+    "split": "80/20 deterministic (last 20% per technique = holdout)",
+    "ordering": "original JSONL file order \u2014 no shuffle",
+    "detection_threshold": 40,
+    "benign_pool_size": 8,
+    "benign_pool_note": "8 synthetic templates \u2014 FP rate is illustrative, not a population estimate",
+    "total_signals": 83,
+    "protected_signals": 23,
+    "techniques_with_mordor_data": [
+      "T1569.002",
+      "T1547.001",
+      "T1003.001",
+      "T1036.005",
+      "T1087.001",
+      "T1059.001",
+      "T1560.001",
+      "T1548.002"
+    ],
+    "techniques_ioc_only": [
+      "T1071.001"
+    ]
+  },
+  "event_counts": {
+    "T1569.002": {
+      "train": 3478,
+      "holdout": 870,
+      "total": 4348
+    },
+    "T1547.001": {
+      "train": 526,
+      "holdout": 131,
+      "total": 657
+    },
+    "T1003.001": {
+      "train": 4821,
+      "holdout": 1205,
+      "total": 6026
+    },
+    "T1036.005": {
+      "train": 9760,
+      "holdout": 2440,
+      "total": 12200
+    },
+    "T1087.001": {
+      "train": 8537,
+      "holdout": 2134,
+      "total": 10671
+    },
+    "T1059.001": {
+      "train": 3871,
+      "holdout": 968,
+      "total": 4839
+    },
+    "T1560.001": {
+      "train": 4962,
+      "holdout": 1240,
+      "total": 6202
+    },
+    "T1548.002": {
+      "train": 3661,
+      "holdout": 915,
+      "total": 4576
+    }
+  },
+  "conditions": {
+    "combined": {
+      "train": {
+        "tp": 4938,
+        "fp": 1,
+        "fn": 34678,
+        "tn": 7,
+        "total_attack": 39616,
+        "total_benign": 8,
+        "signal_presence": 0.637,
+        "detection_rate": 0.125,
+        "precision": 1.0,
+        "f1": 0.222,
+        "fp_rate": 0.125,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 217,
+            "missed": 3261,
+            "total": 3478,
+            "detection_rate": 0.062
+          },
+          "T1547.001": {
+            "detected": 13,
+            "missed": 513,
+            "total": 526,
+            "detection_rate": 0.025
+          },
+          "T1003.001": {
+            "detected": 70,
+            "missed": 4751,
+            "total": 4821,
+            "detection_rate": 0.015
+          },
+          "T1036.005": {
+            "detected": 3465,
+            "missed": 6295,
+            "total": 9760,
+            "detection_rate": 0.355
+          },
+          "T1087.001": {
+            "detected": 381,
+            "missed": 8156,
+            "total": 8537,
+            "detection_rate": 0.045
+          },
+          "T1059.001": {
+            "detected": 210,
+            "missed": 3661,
+            "total": 3871,
+            "detection_rate": 0.054
+          },
+          "T1560.001": {
+            "detected": 203,
+            "missed": 4759,
+            "total": 4962,
+            "detection_rate": 0.041
+          },
+          "T1548.002": {
+            "detected": 379,
+            "missed": 3282,
+            "total": 3661,
+            "detection_rate": 0.104
+          }
+        }
+      },
+      "holdout": {
+        "tp": 550,
+        "fp": 1,
+        "fn": 9353,
+        "tn": 7,
+        "total_attack": 9903,
+        "total_benign": 8,
+        "signal_presence": 0.616,
+        "detection_rate": 0.056,
+        "precision": 0.998,
+        "f1": 0.105,
+        "fp_rate": 0.125,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 38,
+            "missed": 832,
+            "total": 870,
+            "detection_rate": 0.044
+          },
+          "T1547.001": {
+            "detected": 1,
+            "missed": 130,
+            "total": 131,
+            "detection_rate": 0.008
+          },
+          "T1003.001": {
+            "detected": 8,
+            "missed": 1197,
+            "total": 1205,
+            "detection_rate": 0.007
+          },
+          "T1036.005": {
+            "detected": 410,
+            "missed": 2030,
+            "total": 2440,
+            "detection_rate": 0.168
+          },
+          "T1087.001": {
+            "detected": 13,
+            "missed": 2121,
+            "total": 2134,
+            "detection_rate": 0.006
+          },
+          "T1059.001": {
+            "detected": 7,
+            "missed": 961,
+            "total": 968,
+            "detection_rate": 0.007
+          },
+          "T1560.001": {
+            "detected": 12,
+            "missed": 1228,
+            "total": 1240,
+            "detection_rate": 0.01
+          },
+          "T1548.002": {
+            "detected": 61,
+            "missed": 854,
+            "total": 915,
+            "detection_rate": 0.067
+          }
+        }
+      }
+    },
+    "ioc_only": {
+      "train": {
+        "tp": 697,
+        "fp": 1,
+        "fn": 38919,
+        "tn": 7,
+        "total_attack": 39616,
+        "total_benign": 8,
+        "signal_presence": 0.637,
+        "detection_rate": 0.018,
+        "precision": 0.999,
+        "f1": 0.035,
+        "fp_rate": 0.125,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 28,
+            "missed": 3450,
+            "total": 3478,
+            "detection_rate": 0.008
+          },
+          "T1547.001": {
+            "detected": 9,
+            "missed": 517,
+            "total": 526,
+            "detection_rate": 0.017
+          },
+          "T1003.001": {
+            "detected": 63,
+            "missed": 4758,
+            "total": 4821,
+            "detection_rate": 0.013
+          },
+          "T1036.005": {
+            "detected": 70,
+            "missed": 9690,
+            "total": 9760,
+            "detection_rate": 0.007
+          },
+          "T1087.001": {
+            "detected": 108,
+            "missed": 8429,
+            "total": 8537,
+            "detection_rate": 0.013
+          },
+          "T1059.001": {
+            "detected": 28,
+            "missed": 3843,
+            "total": 3871,
+            "detection_rate": 0.007
+          },
+          "T1560.001": {
+            "detected": 51,
+            "missed": 4911,
+            "total": 4962,
+            "detection_rate": 0.01
+          },
+          "T1548.002": {
+            "detected": 340,
+            "missed": 3321,
+            "total": 3661,
+            "detection_rate": 0.093
+          }
+        }
+      },
+      "holdout": {
+        "tp": 203,
+        "fp": 1,
+        "fn": 9700,
+        "tn": 7,
+        "total_attack": 9903,
+        "total_benign": 8,
+        "signal_presence": 0.616,
+        "detection_rate": 0.02,
+        "precision": 0.995,
+        "f1": 0.04,
+        "fp_rate": 0.125,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 7,
+            "missed": 863,
+            "total": 870,
+            "detection_rate": 0.008
+          },
+          "T1547.001": {
+            "detected": 1,
+            "missed": 130,
+            "total": 131,
+            "detection_rate": 0.008
+          },
+          "T1003.001": {
+            "detected": 7,
+            "missed": 1198,
+            "total": 1205,
+            "detection_rate": 0.006
+          },
+          "T1036.005": {
+            "detected": 111,
+            "missed": 2329,
+            "total": 2440,
+            "detection_rate": 0.045
+          },
+          "T1087.001": {
+            "detected": 19,
+            "missed": 2115,
+            "total": 2134,
+            "detection_rate": 0.009
+          },
+          "T1059.001": {
+            "detected": 15,
+            "missed": 953,
+            "total": 968,
+            "detection_rate": 0.015
+          },
+          "T1560.001": {
+            "detected": 20,
+            "missed": 1220,
+            "total": 1240,
+            "detection_rate": 0.016
+          },
+          "T1548.002": {
+            "detected": 23,
+            "missed": 892,
+            "total": 915,
+            "detection_rate": 0.025
+          }
+        }
+      }
+    },
+    "asl_only": {
+      "train": {
+        "tp": 4666,
+        "fp": 0,
+        "fn": 34950,
+        "tn": 8,
+        "total_attack": 39616,
+        "total_benign": 8,
+        "signal_presence": 0.637,
+        "detection_rate": 0.118,
+        "precision": 1.0,
+        "f1": 0.211,
+        "fp_rate": 0.0,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 205,
+            "missed": 3273,
+            "total": 3478,
+            "detection_rate": 0.059
+          },
+          "T1547.001": {
+            "detected": 4,
+            "missed": 522,
+            "total": 526,
+            "detection_rate": 0.008
+          },
+          "T1003.001": {
+            "detected": 10,
+            "missed": 4811,
+            "total": 4821,
+            "detection_rate": 0.002
+          },
+          "T1036.005": {
+            "detected": 3417,
+            "missed": 6343,
+            "total": 9760,
+            "detection_rate": 0.35
+          },
+          "T1087.001": {
+            "detected": 322,
+            "missed": 8215,
+            "total": 8537,
+            "detection_rate": 0.038
+          },
+          "T1059.001": {
+            "detected": 200,
+            "missed": 3671,
+            "total": 3871,
+            "detection_rate": 0.052
+          },
+          "T1560.001": {
+            "detected": 166,
+            "missed": 4796,
+            "total": 4962,
+            "detection_rate": 0.033
+          },
+          "T1548.002": {
+            "detected": 342,
+            "missed": 3319,
+            "total": 3661,
+            "detection_rate": 0.093
+          }
+        }
+      },
+      "holdout": {
+        "tp": 405,
+        "fp": 0,
+        "fn": 9498,
+        "tn": 8,
+        "total_attack": 9903,
+        "total_benign": 8,
+        "signal_presence": 0.616,
+        "detection_rate": 0.041,
+        "precision": 1.0,
+        "f1": 0.079,
+        "fp_rate": 0.0,
+        "per_technique": {
+          "T1569.002": {
+            "detected": 31,
+            "missed": 839,
+            "total": 870,
+            "detection_rate": 0.036
+          },
+          "T1547.001": {
+            "detected": 0,
+            "missed": 131,
+            "total": 131,
+            "detection_rate": 0.0
+          },
+          "T1003.001": {
+            "detected": 1,
+            "missed": 1204,
+            "total": 1205,
+            "detection_rate": 0.001
+          },
+          "T1036.005": {
+            "detected": 306,
+            "missed": 2134,
+            "total": 2440,
+            "detection_rate": 0.125
+          },
+          "T1087.001": {
+            "detected": 6,
+            "missed": 2128,
+            "total": 2134,
+            "detection_rate": 0.003
+          },
+          "T1059.001": {
+            "detected": 3,
+            "missed": 965,
+            "total": 968,
+            "detection_rate": 0.003
+          },
+          "T1560.001": {
+            "detected": 2,
+            "missed": 1238,
+            "total": 1240,
+            "detection_rate": 0.002
+          },
+          "T1548.002": {
+            "detected": 56,
+            "missed": 859,
+            "total": 915,
+            "detection_rate": 0.061
+          }
+        }
+      }
+    }
+  }
+}

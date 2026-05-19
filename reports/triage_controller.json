@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-05-14T19:25:00.247423+00:00",
+  "target": "/mnt/controller",
+  "elapsed_seconds": 8.23,
+  "score": 100,
+  "verdict": "\ud83d\udd34 HIGH \u2014 escalate to full Claude investigation",
+  "hits": {
+    "T1036.005": {
+      "name": "Masquerading",
+      "signals": [
+        "svchost.exe"
+      ],
+      "weight": 50
+    },
+    "T1059.001": {
+      "name": "PowerShell / VBS Execution",
+      "signals": [
+        "svchost.exe"
+      ],
+      "weight": 50
+    }
+  },
+  "command_log": [
+    {
+      "check": "registry_run",
+      "output_lines": 0
+    },
+    {
+      "check": "system32_suspicious",
+      "output_lines": 1
+    },
+    {
+      "check": "psexec_artifacts",
+      "output_lines": 0
+    },
+    {
+      "check": "network_iocs",
+      "output_lines": 1
+    },
+    {
+      "check": "known_tools",
+      "output_lines": 0
+    }
+  ]
+}

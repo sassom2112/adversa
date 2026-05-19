@@ -1,0 +1,609 @@
+{
+  "exported_at": "2026-05-14T03:08:46.329149+00:00",
+  "trained_iterations": 3000,
+  "min_weight_threshold": 35,
+  "rules": {
+    "T1547.001": {
+      "name": "Registry Run Key",
+      "signals": [
+        "dllhost\\\\svchost",
+        "psexesvc",
+        "EventID=5156",
+        "WmiPrvSE.exe",
+        "Set-ItemProperty HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "Network conn allowed via kernel filter layer SourcePort:445"
+      ],
+      "weight": 50,
+      "evasions_seen": 148,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "dllhost\\\\svchost",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "psexesvc",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "EventID=5156",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "WmiPrvSE.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Set-ItemProperty HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Network conn allowed via kernel filter layer SourcePort:445",
+          "tier": "asl_trained"
+        }
+      ]
+    },
+    "T1036.005": {
+      "name": "Masquerading",
+      "signals": [
+        "dllhost\\\\svchost.exe",
+        "SystemCertificates\\Disallowed",
+        "\\device\\harddiskvolume4\\windows\\system32\\lsass.exe",
+        "\\Registry\\Machine\\Software\\Classes\\CLSID\\"
+      ],
+      "weight": 50,
+      "evasions_seen": 171,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "dllhost\\\\svchost.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "SystemCertificates\\Disallowed",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "\\device\\harddiskvolume4\\windows\\system32\\lsass.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "\\Registry\\Machine\\Software\\Classes\\CLSID\\",
+          "tier": "asl_trained"
+        }
+      ]
+    },
+    "T1003.001": {
+      "name": "Credential Dumping",
+      "signals": [
+        "mimikatz",
+        "hydrakatz",
+        "sekurlsa",
+        "0x1fffff",
+        "\\device\\harddiskvolume2\\windows\\system32\\lsass.exe",
+        "comsvcs.dll",
+        "rundll32.exe",
+        "query user",
+        "lsass memory read op",
+        "dbgcore.dll",
+        "spinlock",
+        "spinlock.exe"
+      ],
+      "weight": 50,
+      "evasions_seen": 159,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "mimikatz",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "hydrakatz",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "sekurlsa",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "0x1fffff",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "\\device\\harddiskvolume2\\windows\\system32\\lsass.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "comsvcs.dll",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "rundll32.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "query user",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "lsass memory read op",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "dbgcore.dll",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "spinlock",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "spinlock.exe",
+          "tier": "forensic_ioc"
+        }
+      ]
+    },
+    "T1071.001": {
+      "name": "C2 Web Protocol",
+      "signals": [
+        "12.190.135.235",
+        "199.73.28.114",
+        "winclient"
+      ],
+      "weight": 35,
+      "evasions_seen": 0,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "12.190.135.235",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "199.73.28.114",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "winclient",
+          "tier": "forensic_ioc"
+        }
+      ]
+    },
+    "T1569.002": {
+      "name": "PsExec",
+      "signals": [
+        "psexesvc",
+        "psexec",
+        "\\admin$\\",
+        "EventID=10",
+        "NetworkSetup2\\BindPaths",
+        "sc.exe create",
+        "sc.exe start RemoteRegistry",
+        "pwsh.exe",
+        "DeliveryOptimization\\Usage",
+        "PSEXESVC.EXE"
+      ],
+      "weight": 50,
+      "evasions_seen": 173,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "psexesvc",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "psexec",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "\\admin$\\",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "EventID=10",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "NetworkSetup2\\BindPaths",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "sc.exe create",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "sc.exe start RemoteRegistry",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "pwsh.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "DeliveryOptimization\\Usage",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "PSEXESVC.EXE",
+          "tier": "forensic_ioc"
+        }
+      ]
+    },
+    "T1087.001": {
+      "name": "Account Discovery",
+      "signals": [
+        "net user /domain",
+        "samr",
+        "psmserviceexthost.dll",
+        "wmic useraccount list",
+        "Win32_UserAccount",
+        "useraccount list brief",
+        "4656",
+        "Win32_Account",
+        "query.exe user /domain",
+        "SDXHelper.exe",
+        "5156",
+        "port 445",
+        "useraccount get name,sid,status",
+        "tasklist.exe /FO CSV",
+        "5381",
+        "regsvr32.exe /s /n /u /i:scrobj.dll",
+        "HKLM\\System\\CurrentControlSet\\Services\\W32Time",
+        "tasklist.exe /v",
+        "[adsisearcher]",
+        "SeSecurityPrivilege",
+        "vibranium",
+        "SHIELDBASE+vibranium"
+      ],
+      "weight": 45,
+      "evasions_seen": 162,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "net user /domain",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "samr",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "psmserviceexthost.dll",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "wmic useraccount list",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Win32_UserAccount",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "useraccount list brief",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "4656",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Win32_Account",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "query.exe user /domain",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "SDXHelper.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "5156",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "port 445",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "useraccount get name,sid,status",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "tasklist.exe /FO CSV",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "5381",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "regsvr32.exe /s /n /u /i:scrobj.dll",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "HKLM\\System\\CurrentControlSet\\Services\\W32Time",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "tasklist.exe /v",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "[adsisearcher]",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "SeSecurityPrivilege",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "vibranium",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "SHIELDBASE+vibranium",
+          "tier": "forensic_ioc"
+        }
+      ]
+    },
+    "T1059.001": {
+      "name": "PowerShell / VBS Execution",
+      "signals": [
+        "powershell -enc",
+        "invoke-expression",
+        "svchost.exe",
+        "4658",
+        "Explorer.exe accessing lsass with PROCESS_QUERY_LIMITED_INFORMATION",
+        "Services\\TCPIP6\\Parameters",
+        "-win 1 -enc",
+        "4663",
+        "Image=C:\\ProgramData\\SharpView.exe",
+        "Image=C:\\Windows\\System32\\cmd.exe | EventID=17 | Host=WS01"
+      ],
+      "weight": 50,
+      "evasions_seen": 139,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "powershell -enc",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "invoke-expression",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "svchost.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "4658",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Explorer.exe accessing lsass with PROCESS_QUERY_LIMITED_INFORMATION",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Services\\TCPIP6\\Parameters",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "-win 1 -enc",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "4663",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Image=C:\\ProgramData\\SharpView.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Image=C:\\Windows\\System32\\cmd.exe | EventID=17 | Host=WS01",
+          "tier": "asl_trained"
+        }
+      ]
+    },
+    "T1560.001": {
+      "name": "Archive Collected Data",
+      "signals": [
+        "record_mic",
+        "audiocapture",
+        "RuntimeBroker.exe",
+        "taskhostw.exe",
+        "SearchIndexer.exe",
+        "\\REGISTRY\\A\\{9b5e4ab2-4045-b3ce-47fb-1bc6929617ea}\\LocalState"
+      ],
+      "weight": 50,
+      "evasions_seen": 145,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "record_mic",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "audiocapture",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "RuntimeBroker.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "taskhostw.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "SearchIndexer.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "\\REGISTRY\\A\\{9b5e4ab2-4045-b3ce-47fb-1bc6929617ea}\\LocalState",
+          "tier": "asl_trained"
+        }
+      ]
+    },
+    "T1548.002": {
+      "name": "UAC Bypass",
+      "signals": [
+        "fodhelper",
+        "consent.exe",
+        "HKLM\\SOFTWARE\\Microsoft",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "Image=System | EventID=9",
+        "C:\\Windows\\System32\\cmd.exe /c whoami > C:\\temp\\out.txt",
+        "Object handle closed via indirect syscall NtClose stub",
+        "Image=System | TargetObject=HKLM\\SOFTWARE\\Classes\\CLSID | EventID=12",
+        "ComputerDefaults.exe"
+      ],
+      "weight": 50,
+      "evasions_seen": 148,
+      "source": "asl_trained",
+      "signals_tagged": [
+        {
+          "signal": "fodhelper",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "consent.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "HKLM\\SOFTWARE\\Microsoft",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Image=System | EventID=9",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "C:\\Windows\\System32\\cmd.exe /c whoami > C:\\temp\\out.txt",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Object handle closed via indirect syscall NtClose stub",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "Image=System | TargetObject=HKLM\\SOFTWARE\\Classes\\CLSID | EventID=12",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "ComputerDefaults.exe",
+          "tier": "asl_trained"
+        }
+      ]
+    },
+    "T1055": {
+      "name": "Process Injection (Zeus/ZBot)",
+      "weight": 65,
+      "description": "Zeus banking trojan \u2014 detected via disk artifacts on offline image",
+      "signals": [
+        "sdra64",
+        "ntos.exe",
+        "oembios.exe",
+        "twext.exe",
+        "ldhelper.exe",
+        "lowsec",
+        "c_2057.nls",
+        "usersubprincipal"
+      ],
+      "signals_tagged": [
+        {
+          "signal": "sdra64",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "ntos.exe",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "oembios.exe",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "twext.exe",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "ldhelper.exe",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "lowsec",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "c_2057.nls",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "usersubprincipal",
+          "tier": "forensic_ioc"
+        }
+      ],
+      "protected_signals": [
+        "sdra64",
+        "ntos.exe",
+        "lowsec"
+      ],
+      "evasions_seen": 0,
+      "source": "forensic_ioc"
+    },
+    "T1056.001": {
+      "name": "Keylogging (Zeus credential theft)",
+      "weight": 55,
+      "description": "Zeus keylogging / form-grabbing \u2014 Run key persistence in AppData",
+      "signals": [
+        "sdra64",
+        "ntos.exe",
+        "lowsec",
+        "application data",
+        "usersubprincipal"
+      ],
+      "signals_tagged": [
+        {
+          "signal": "sdra64",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "ntos.exe",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "lowsec",
+          "tier": "forensic_ioc"
+        },
+        {
+          "signal": "application data",
+          "tier": "asl_trained"
+        },
+        {
+          "signal": "usersubprincipal",
+          "tier": "forensic_ioc"
+        }
+      ],
+      "protected_signals": [
+        "sdra64",
+        "lowsec"
+      ],
+      "evasions_seen": 0,
+      "source": "forensic_ioc"
+    }
+  },
+  "ioc_patch_date": "2026-05-15",
+  "ioc_patch_note": "Disk-artifact IOCs injected from confirmed investigation findings (spinlock, vibranium, procdump). ASL training signals are Sysmon-format; these disk-scannable IOCs bridge the training/deployment domain gap.",
+  "signal_tiers": {
+    "asl_trained": "Extracted from 49,519 Mordor Sysmon events via adversarial training loop",
+    "forensic_ioc": "Confirmed campaign artifacts from nromanoff investigation, applied cross-host"
+  }
+}

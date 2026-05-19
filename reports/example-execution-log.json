@@ -1,0 +1,143 @@
+{
+  "description": "Example agent execution log showing ADVERSA dual-agent pipeline structure. Host and case data anonymized. Timestamps and token counts are representative of real runs.",
+  "host": "example-host",
+  "pipeline": "Triage Agent -> Forensic Auditor",
+  "framework": "ADVERSA — Adversarial Signal Learning",
+  "generated": "2026-05-19T00:00:00Z",
+
+  "phase1_triage": {
+    "pass1_tool_log": [
+      {
+        "ts": "2026-05-19T00:00:01Z",
+        "tool": "run_terminal_command",
+        "command": "reg query 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run' /s 2>/dev/null",
+        "bytes_returned": 842,
+        "tokens_used": 312
+      },
+      {
+        "ts": "2026-05-19T00:00:03Z",
+        "tool": "run_terminal_command",
+        "command": "grep -r 'hydrakatz\\|spinlock\\|mimikatz\\|sekurlsa' /mnt/example-host/Windows/ 2>/dev/null",
+        "bytes_returned": 2341,
+        "tokens_used": 487
+      },
+      {
+        "ts": "2026-05-19T00:00:05Z",
+        "tool": "run_terminal_command",
+        "command": "grep -ri 'psexesvc\\|psexec' /mnt/example-host/Windows/ 2>/dev/null",
+        "bytes_returned": 677,
+        "tokens_used": 215
+      }
+    ],
+    "pass1_score": 67,
+    "pass1_hits": {
+      "T1003.001": ["hydrakatz", "lsass"],
+      "T1569.002": ["PSEXESVC.EXE"],
+      "T1071.001": ["12.190.135.235"]
+    },
+    "pass2_tool_log": [
+      {
+        "ts": "2026-05-19T00:00:12Z",
+        "tool": "run_terminal_command",
+        "command": "python3 /opt/volatility3-2.20.0/vol.py -f /mnt/example-host/memory.raw windows.cmdline",
+        "bytes_returned": 4201,
+        "tokens_used": 891,
+        "call_number": 1
+      },
+      {
+        "ts": "2026-05-19T00:00:45Z",
+        "tool": "run_terminal_command",
+        "command": "python3 /opt/zimmermantools/EvtxeCmd/EvtxECmd.dll -d /mnt/example-host/Windows/System32/winevt/Logs --csv /tmp/evtx_out 2>/dev/null",
+        "bytes_returned": 8912,
+        "tokens_used": 1203,
+        "call_number": 8
+      },
+      {
+        "ts": "2026-05-19T00:01:30Z",
+        "tool": "run_terminal_command",
+        "command": "grep -i 'T1059\\|cmd.exe\\|powershell' /mnt/example-host/Windows/Prefetch/ 2>/dev/null",
+        "bytes_returned": 1876,
+        "tokens_used": 634,
+        "call_number": 26,
+        "note": "operator_checkpoint_passed_at_call_25"
+      }
+    ],
+    "pass2_total_calls": 48,
+    "pass2_final_score": 67
+  },
+
+  "phase2_audit": {
+    "technique_challenges": [
+      {
+        "finding_id": "T1003.001",
+        "technique_name": "OS Credential Dumping: LSASS Memory",
+        "triage_claim": "hydrakatz.exe and lsass access detected",
+        "challenges": [
+          {
+            "round": 1,
+            "ts": "2026-05-19T00:08:14Z",
+            "auditor_command": "grep -r 'hydrakatz' /mnt/example-host/Windows/System32/ 2>/dev/null",
+            "result_snippet": "hydrakatz.exe: PE32 executable found at /mnt/example-host/Windows/System32/hydrakatz.exe",
+            "verdict": "CONFIRMED",
+            "tokens_used": 743
+          }
+        ],
+        "final_verdict": "CONFIRMED",
+        "convergence_reason": "positive_evidence_round_1"
+      },
+      {
+        "finding_id": "T1036.005",
+        "technique_name": "Masquerading: Match Legitimate Name or Location",
+        "triage_claim": "dllhost\\svchost path anomaly detected",
+        "challenges": [
+          {
+            "round": 1,
+            "ts": "2026-05-19T00:09:02Z",
+            "auditor_command": "find /mnt/example-host -name 'svchost.exe' -not -path '*/System32/*' 2>/dev/null",
+            "result_snippet": "",
+            "verdict": "INCONCLUSIVE",
+            "tokens_used": 612
+          },
+          {
+            "round": 2,
+            "ts": "2026-05-19T00:09:45Z",
+            "auditor_command": "fls -r /mnt/example-host | grep -i 'svchost' 2>/dev/null",
+            "result_snippet": "r/r 12345: Windows/System32/svchost.exe",
+            "verdict": "REFUTED",
+            "tokens_used": 589,
+            "note": "only canonical System32 path found; no masqueraded copy"
+          }
+        ],
+        "final_verdict": "REFUTED",
+        "convergence_reason": "contradiction_round_2"
+      }
+    ],
+    "confirmed_findings": ["T1003.001"],
+    "inconclusive_findings": ["T1071.001"],
+    "refuted_findings": ["T1036.005"],
+    "adjusted_score": 35,
+    "total_argumentation_rounds": 5
+  },
+
+  "phase3_unified": {
+    "final_verdict": "HIGH — Active compromise confirmed (high-value technique verified on disk)",
+    "elapsed_s": 614,
+    "reports_written": [
+      "reports/example-host-custom-agent-report.json",
+      "reports/example-host-auditor-transcript.json",
+      "reports/example-host-investigation.json",
+      "reports/example-host-report.html",
+      "reports/example-host-iocs.json"
+    ]
+  },
+
+  "token_summary": {
+    "pass1_total": 1014,
+    "pass2_total": 18943,
+    "audit_total": 6821,
+    "grand_total": 26778,
+    "model_pass1": "deterministic_no_llm",
+    "model_pass2": "claude-opus-4-5",
+    "model_audit": "claude-opus-4-5"
+  }
+}

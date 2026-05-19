@@ -1,0 +1,40 @@
+flowchart TD
+    subgraph GAN["Component 2 — Adversarial GAN Training Loop"]
+        M[("Mordor Datasets\n23,231 Sysmon events\n4 MITRE techniques")]
+        R["🔴 Red Agent\nmordor_agent.py\nGenerates real attack artifacts\nEvolves evasions when caught"]
+        B["🔵 Blue Agent\nbrain.py\nDetects artifacts\nLearns from misses via Claude"]
+        M --> R
+        R -- "attack artifact" --> B
+        B -- "caught → evolve()" --> R
+        B -- "missed → learn()" --> B
+    end
+
+    subgraph BRIDGE["Component 3 — Pattern Export Bridge"]
+        S[("reports/\nbrain_state.json")]
+        E["export_patterns.py\nFilters weight ≥ 35\nExports reliable signals only"]
+        O[("reports/\noperational_rules.json")]
+        B --> S
+        S --> E
+        E --> O
+    end
+
+    subgraph INVEST["Component 1 — Forensic Investigation Pipeline"]
+        FT["fast_triage.py\nSub-10s deterministic scan\nNo LLM — pattern match only"]
+        BA["blue_agent.py\nLoads GAN-trained rules\nFull Claude investigation\nAudit log + confidence score"]
+        CC["Claude Code\nProtocol SIFT\nnromanoff / tdungan\nnfury / controller"]
+        O --> FT
+        O --> BA
+        FT -- "score ≥ 30 → escalate" --> BA
+        BA --> CC
+    end
+
+    subgraph OUTPUT["Submission Deliverables"]
+        R1["accuracy_report.json\nPrecision / Recall / F1\nPhase transition analysis"]
+        R2["audit_log.json\nTimestamped tool calls\nToken usage per call"]
+        R3["training_graphs.png\n0% → 55% recovery curve\nGAN arms race chart"]
+        R4["Case Reports\n4-machine lateral movement\nnromanoff → tdungan → nfury → controller"]
+        B --> R1
+        B --> R3
+        BA --> R2
+        CC --> R4
+    end

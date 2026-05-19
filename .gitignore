@@ -15,6 +15,7 @@ __pycache__/
 .claude/
 
 # Evidence & case data (chain of custody — never commit)
+cases
 cases/
 /mnt/
 nfury_extracted/

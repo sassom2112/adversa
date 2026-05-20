@@ -1,0 +1,332 @@
+{
+  "summary": {
+    "rules_tested": 11,
+    "asl_eligible_rules": 9,
+    "rules_detected_asl_only": 5,
+    "detection_rate_asl_only": 0.556,
+    "detection_rate_pct": "55.6%",
+    "dataset": "EVTX-ATTACK-SAMPLES (Splunk Agentic IR)",
+    "methodology": "Only asl_trained signals (learned via Red/Blue loop on Mordor data) are counted toward detection. forensic_ioc signals are case-specific artifacts extracted from the SANS investigation itself and are excluded \u2014 testing them on an independent dataset would be circular."
+  },
+  "per_technique": {
+    "T1547.001": {
+      "name": "Registry Run Key",
+      "weight": 50,
+      "detected_asl_only": true,
+      "asl_signals": {
+        "total": 5,
+        "matched": [
+          "WmiPrvSE.exe"
+        ],
+        "hit_counts": {
+          "WmiPrvSE.exe": 1
+        },
+        "fp": [
+          "WmiPrvSE.exe"
+        ],
+        "precision": 0.2
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "psexesvc"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": [
+          "psexesvc"
+        ]
+      },
+      "on_target_events": 411,
+      "expected_tactics": [
+        "persistence"
+      ]
+    },
+    "T1036.005": {
+      "name": "Masquerading",
+      "weight": 50,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 4,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 431,
+      "expected_tactics": [
+        "defense evasion",
+        "evasion"
+      ]
+    },
+    "T1003.001": {
+      "name": "Credential Dumping",
+      "weight": 50,
+      "detected_asl_only": true,
+      "asl_signals": {
+        "total": 9,
+        "matched": [
+          "mimikatz",
+          "comsvcs.dll",
+          "rundll32.exe",
+          "dbgcore.dll"
+        ],
+        "hit_counts": {
+          "mimikatz": 1,
+          "comsvcs.dll": 1,
+          "rundll32.exe": 10,
+          "dbgcore.dll": 1
+        },
+        "fp": [
+          "mimikatz",
+          "comsvcs.dll",
+          "rundll32.exe",
+          "dbgcore.dll"
+        ],
+        "precision": 0.444
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "hydrakatz",
+          "spinlock",
+          "spinlock.exe"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 283,
+      "expected_tactics": [
+        "credential",
+        "cred"
+      ]
+    },
+    "T1071.001": {
+      "name": "C2 Web Protocol",
+      "weight": 35,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 0,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "12.190.135.235",
+          "199.73.28.114",
+          "winclient"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 432,
+      "expected_tactics": [
+        "command and control",
+        "c2"
+      ]
+    },
+    "T1569.002": {
+      "name": "PsExec",
+      "weight": 50,
+      "detected_asl_only": true,
+      "asl_signals": {
+        "total": 8,
+        "matched": [
+          "psexec",
+          "\\admin$\\"
+        ],
+        "hit_counts": {
+          "psexec": 1,
+          "\\admin$\\": 8
+        },
+        "fp": [
+          "psexec"
+        ],
+        "precision": 0.25
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "psexesvc",
+          "PSEXESVC.EXE"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": [
+          "psexesvc",
+          "PSEXESVC.EXE"
+        ]
+      },
+      "on_target_events": 1821,
+      "expected_tactics": [
+        "lateral movement",
+        "execution"
+      ]
+    },
+    "T1087.001": {
+      "name": "Account Discovery",
+      "weight": 45,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 20,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "vibranium",
+          "SHIELDBASE+vibranium"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 167,
+      "expected_tactics": [
+        "discovery"
+      ]
+    },
+    "T1059.001": {
+      "name": "PowerShell / VBS Execution",
+      "weight": 50,
+      "detected_asl_only": true,
+      "asl_signals": {
+        "total": 10,
+        "matched": [
+          "svchost.exe"
+        ],
+        "hit_counts": {
+          "svchost.exe": 15
+        },
+        "fp": [
+          "svchost.exe"
+        ],
+        "precision": 0.1
+      },
+      "forensic_ioc_signals": {
+        "signals": [],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 533,
+      "expected_tactics": [
+        "execution"
+      ]
+    },
+    "T1560.001": {
+      "name": "Archive Collected Data",
+      "weight": 50,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 6,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 0,
+      "expected_tactics": [
+        "collection"
+      ]
+    },
+    "T1548.002": {
+      "name": "UAC Bypass",
+      "weight": 50,
+      "detected_asl_only": true,
+      "asl_signals": {
+        "total": 9,
+        "matched": [
+          "fodhelper",
+          "consent.exe",
+          "HKLM\\SOFTWARE\\Microsoft",
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        ],
+        "hit_counts": {
+          "fodhelper": 3,
+          "consent.exe": 297,
+          "HKLM\\SOFTWARE\\Microsoft": 14,
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe": 38
+        },
+        "fp": [
+          "HKLM\\SOFTWARE\\Microsoft",
+          "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+        ],
+        "precision": 0.444
+      },
+      "forensic_ioc_signals": {
+        "signals": [],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 1088,
+      "expected_tactics": [
+        "privilege escalation"
+      ]
+    },
+    "T1055": {
+      "name": "Process Injection (Zeus/ZBot)",
+      "weight": 65,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 0,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "sdra64",
+          "ntos.exe",
+          "oembios.exe",
+          "twext.exe",
+          "ldhelper.exe",
+          "lowsec",
+          "c_2057.nls",
+          "usersubprincipal"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 1519,
+      "expected_tactics": [
+        "defense evasion",
+        "privilege escalation"
+      ]
+    },
+    "T1056.001": {
+      "name": "Keylogging (Zeus credential theft)",
+      "weight": 55,
+      "detected_asl_only": false,
+      "asl_signals": {
+        "total": 1,
+        "matched": [],
+        "hit_counts": {},
+        "fp": [],
+        "precision": 0.0
+      },
+      "forensic_ioc_signals": {
+        "signals": [
+          "sdra64",
+          "ntos.exe",
+          "lowsec",
+          "usersubprincipal"
+        ],
+        "note": "case-specific; excluded from cross-dataset claim",
+        "matched_on_independent_data": []
+      },
+      "on_target_events": 0,
+      "expected_tactics": [
+        "collection"
+      ]
+    }
+  }
+}

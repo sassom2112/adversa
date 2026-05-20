@@ -135,6 +135,23 @@ python3 custom-agent/export_patterns.py  # → operational_rules.json + sigma_ru
 
 ## Results
 
+### Live Investigation — SANS FIND EVIL! 2026 Case Data
+
+| Host | Confirmed Techniques | Score | Verdict |
+|------|---------------------|-------|---------|
+| tdungan | T1003.001, T1204.002, T1059 | 100/100 | HIGH |
+| nfury | T1003.001, T1087.001 | 95/100 | HIGH |
+| controller | T1003.001 | 50/100 | HIGH (2 FPs caught by Auditor) |
+
+The controller result is the most illustrative: the Triage Agent scored 145, flagging three
+techniques. The Forensic Auditor refuted two (legitimate svchost in WinSxS, user profile
+directory traversal). Final confirmed score: 50. One real finding, zero false accusations.
+
+See [ACCURACY.md](ACCURACY.md) for full iteration progression. See [SUBMISSION.md](SUBMISSION.md)
+for the full case walkthrough with terminal output.
+
+---
+
 ### Adversarial Training — Self-Correction Over 3,000 Iterations
 
 The system started with near-zero detection on real Sysmon telemetry — no domain knowledge,
@@ -152,21 +169,6 @@ detection with no human intervention.
 | MITRE techniques covered | 9 |
 | Red evasion variants evolved | 1,245 |
 | Signals learned autonomously | 83 |
-
-### Live Investigation — SANS FIND EVIL! 2026 Case Data
-
-| Host | Confirmed Techniques | Score | Verdict |
-|------|---------------------|-------|---------|
-| tdungan | T1003.001, T1204.002, T1059 | 100/100 | HIGH |
-| nfury | T1003.001, T1087.001 | 95/100 | HIGH |
-| controller | T1003.001 | 50/100 | HIGH (2 FPs caught by Auditor) |
-
-The controller result is the most illustrative: the Triage Agent scored 145, flagging three
-techniques. The Forensic Auditor refuted two (legitimate svchost in WinSxS, user profile
-directory traversal). Final confirmed score: 50. One real finding, zero false accusations.
-
-See [ACCURACY.md](ACCURACY.md) for full iteration progression. See [SUBMISSION.md](SUBMISSION.md)
-for the full case walkthrough with terminal output.
 
 ---
 
@@ -189,6 +191,87 @@ Architecture beats prompts — evidence modification is structurally impossible,
 
 Mordor/OTRF real Windows Sysmon telemetry is not included in this repo (1.3 GB).
 Download instructions: [DATASET.md](DATASET.md)
+
+---
+
+## Cross-Dataset Validation
+
+ADVERSA's rules contain two kinds of signals, tracked per-signal in `signals_tagged`:
+
+- **`asl_trained`** — learned autonomously by the Red/Blue loop on Mordor/OTRF Sysmon data
+- **`forensic_ioc`** — extracted from the SANS case and added back into the rules post-investigation
+
+Only `asl_trained` signals are tested against independent data. Testing `forensic_ioc` signals
+(case-specific C2 IPs, custom malware names like `hydrakatz` and `spinlock`) on new data is
+circular — they were derived from the same case they are credited with detecting.
+
+`validate_against_evtx.py` runs `asl_trained` signals against the EVTX-ATTACK-SAMPLES dataset
+used by [Splunk Agentic IR](https://github.com/sassom2112/splunk-agentic-ir) — an independent
+source never seen during training.
+
+```bash
+python3 validate_against_evtx.py   # uses ../splunk-agentic-ir by default
+```
+
+| Technique | Detected | ASL signals matched | IOC signals excluded |
+|-----------|----------|--------------------|--------------------|
+| T1003.001 — Credential Dumping | YES | mimikatz, comsvcs.dll, rundll32.exe, dbgcore.dll | hydrakatz, spinlock, spinlock.exe |
+| T1569.002 — PsExec | YES | psexec, \\admin$\\ | psexesvc, PSEXESVC.EXE |
+| T1547.001 — Registry Run Key | YES | WmiPrvSE.exe | psexesvc |
+| T1548.002 — UAC Bypass | YES | fodhelper, consent.exe, powershell.exe | — |
+| T1059.001 — PowerShell Execution | YES | svchost.exe | — |
+| T1036.005 — Masquerading | NO | 0/4 ASL signals fired | — |
+| T1087.001 — Account Discovery | NO | 0/20 ASL signals fired | vibranium, SHIELDBASE+vibranium |
+| T1071.001 — C2 Web Protocol | N/A | 0 ASL signals (all signals are forensic IOCs) | 12.190.135.235, 199.73.28.114 |
+| T1055 — Process Injection | N/A | 0 ASL signals (Zeus-specific IOCs only) | sdra64, ntos.exe, … |
+
+**5 of 9 testable rules (55.6%)** detect on the independent dataset using only `asl_trained`
+signals. T1036.005 and T1087.001 have ASL signals that did not fire — those techniques lack
+process-create field coverage in this EVTX sample. T1071.001 and T1055 contain no generalizable
+signals and are excluded from the rate.
+
+Full per-signal results: `reports/evtx_cross_validation.json`
+
+---
+
+## Three-Tool Platform
+
+ADVERSA is one of three independent tools covering the full evidence stack of a Windows intrusion.
+Each runs standalone; together they form a convergent detection platform.
+
+| Tool | Data layer | AI model | What it answers |
+|------|-----------|----------|-----------------|
+| **ADVERSA** | Disk image (offline) | Claude (Anthropic) | What artifacts are physically on the image? Are findings real? |
+| **[Splunk Agentic IR](https://github.com/sassom2112/splunk-agentic-ir)** | Splunk / SPL | Claude (Anthropic) | What do SIEM logs say? What's the blast radius? |
+| **[Elastic IR Agent](https://github.com/sassom2112/ir-agent)** | Elasticsearch / ES\|QL | Gemini (Google) | What does the cross-session memory say? What's the full timeline? |
+
+```
+[Alert fires]          [Splunk Agentic IR]  ──┐
+                       [Elastic IR Agent]   ──┤  converging log-layer evidence
+                                              │
+[Disk image mounted]   [ADVERSA]          ────┘  physical verification + FP elimination
+```
+
+### Export ADVERSA IOCs → Splunk SPL
+
+```bash
+python3 export_to_splunk.py reports/<hostname>-iocs.json
+```
+
+### Export ADVERSA IOCs → Elastic ES|QL
+
+```bash
+# From the splunk-agentic-ir directory (where the IOC bridge lives)
+python3 -m agent.ioc_bridge adversa-to-esql reports/<hostname>-iocs.json --index ir-events
+```
+
+### Import Splunk or Elastic findings → ADVERSA campaign mode
+
+```bash
+python3 -m agent.ioc_bridge splunk-to-adversa output/reports/INC-001.json \
+    --out /path/to/adversa/custom-agent/iocs/inc001.json
+python3 custom-agent/investigate.py /mnt/hostname
+```
 
 ---
 

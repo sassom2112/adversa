@@ -176,56 +176,139 @@ detection with no human intervention.
 
 ![ADVERSA Guardrails — Anti-Hallucination Trust Chain & MCP Security Boundary](docs/adversa-guardrails.png)
 
-The MCP security boundary implements and exceeds the controls recommended for safe agentic shell
-access. The design principle throughout: **make bad actions structurally impossible, not
-prompt-dependent**.
+The design principle throughout: **make bad actions structurally impossible, not prompt-dependent.**
 
-**Layer 1 — Hard-blocked substrings** (`sift_server.py:78`)
-String match on the raw command before any parsing. Blocks destructive ops (`shred`, `mkfs`,
-`fdisk`, `wipefs`, `dd if=/dev/zero`), exfiltration (`wget`, `curl`, `nc`, `ssh`, `scp`),
-privilege escalation (`sudo`, `su`, `pkexec`), and command injection (`$(`, backtick). Belt
-before suspenders — catches injection before the parser runs.
+---
 
-**Layer 2 — Forensic binary allowlist** (`sift_server.py:34`)
-Each segment of a pipe is parsed with `shlex.split`. The leading binary must be in an explicit
-`frozenset` of ~60 approved SIFT tools (Sleuth Kit, Volatility, YARA, RegRipper, text utils).
-Blocked by omission, not by pattern — `rm`, `chmod`, and `python3 -c` are absent from the list,
-not matched by regex. `python3 -c` (inline code execution) is additionally hard-blocked even
-though `python3` itself is allowed, closing that specific escape route.
+### What the agent can and cannot do
 
-**Layer 3 — Redirect guard** (`sift_server.py:153`)
-All `>` and `>>` targets are resolved with `os.path.realpath()` and must land inside `reports/`.
-Only `/dev/null` is additionally whitelisted. Symlink traversal and `../` path injection are
-defeated at the math level — the canonical path must resolve inside `reports/`, not just start
-with it.
+The MCP server exposes `run_terminal_command` — a single typed entry point that accepts a command
+string. Claude constructs commands exactly as a forensic analyst would at the terminal. This is a
+deliberate design choice: pre-packaged tool wrappers would limit the agent to a fixed set of
+forensic patterns; exposing the full SIFT toolkit with a validator gives the same expressiveness
+while enforcing the boundary at execution time.
 
-**stdin isolation** (`sift_server.py:287`)
+Every command goes through `_validate_command()` before `subprocess.run` is ever called.
+
+---
+
+### Layer 1 — Hard-blocked substrings
+
+Raw string match on the lowercased command before any parsing:
+
+| Category | Blocked tokens |
+|----------|---------------|
+| Destructive | `shred`, `mkfs`, `fdisk`, `parted`, `wipefs`, `dd if=/dev/zero`, `dd if=/dev/urandom` |
+| Exfiltration | `wget`, `curl `, `nc `, `ncat `, `netcat `, `ssh `, `scp `, `rsync ` |
+| Privilege escalation | `sudo `, `su `, `pkexec` |
+| Process manipulation | `kill `, `killall`, `systemctl`, `service ` |
+| Substitution injection | `$(`, `` ` `` |
+| Variable expansion | `${` — blocks `echo ${ANTHROPIC_API_KEY}` and similar env reads |
+| In-process shell execution | `system(` — blocks `awk 'BEGIN{system("cmd")}'` and equivalents |
+
+Runs before the shell sees the command. Cannot be bypassed by encoding because the match is
+on the raw string, not the interpreted result.
+
+---
+
+### Layer 2 — Forensic binary allowlist + per-binary argument guards
+
+Each pipe segment is split with `shlex.split` (handles quoted escapes). The leading binary must
+be in an explicit `frozenset` of approved SIFT tools. Blocked by omission — anything absent from
+the list is rejected without needing a pattern match.
+
+`sed` is intentionally excluded: GNU `sed`'s `e` flag passes the pattern space directly to the
+shell for execution, bypassing all pipeline validation. `awk` and `grep` cover the same forensic
+text-processing use cases.
+
+Per-binary argument guards run after the allowlist check:
+
+**`python3` / `python`** — `-c` flag blocked even though the binary itself is allowed. Closes
+inline code execution without removing `python3` from the allowlist (needed for Volatility).
+
+**`find`** — `-exec` and `-execdir` targets extracted and validated against the allowlist.
+`find -exec sh -c` is blocked; `find -exec sha256sum {} \;` is allowed.
+
+**`xargs`** — the command argument (first non-flag token) is extracted and validated against
+the allowlist. `xargs sh -c` is blocked; `xargs md5sum` is allowed.
+
+**`tee`** — all output file arguments are validated through the same write-target check as
+shell redirects (see Layer 3). `tee` writes files as a program side-effect without using `>`
+syntax, so it is validated separately.
+
+---
+
+### Layer 3 — Write-target guard
+
+All write targets — shell `>` / `>>` redirects and `tee` file arguments — are resolved with
+`os.path.realpath(os.path.join(os.getcwd(), raw))` and must land inside `reports/`. This uses
+`cwd` rather than a fixed base path so the check matches what the shell will actually do.
+
+`/dev/null` is additionally whitelisted.
+
+`audit_log.jsonl` is explicitly denied regardless of path — even a correctly-resolved path
+inside `reports/` cannot overwrite the audit log through a tool command.
+
+Symlink traversal and `../` injection are defeated at the math level: the canonical path must
+resolve inside `reports/`, not merely start with the string.
+
+---
+
+### stdin isolation
+
 All `subprocess.run` calls set `stdin=subprocess.DEVNULL`. The agent cannot read from stdin,
 closing the piped prompt injection vector.
 
-**Chain-of-custody audit log** (`sift_server.py:171`)
+---
+
+### Chain-of-custody audit log
+
 Every command — allowed or blocked — is atomically appended to `reports/audit_log.jsonl` using
-raw `os.open + os.write` (not Python's buffered IO) to guarantee no partial writes. Blocked
-commands log the `blocked_reason`; successful commands log duration, returncode, and output
-preview.
+raw `os.open + os.write` before `subprocess.run` is called. Not Python's buffered IO — a
+partial write cannot occur. Blocked commands log `blocked_reason`; successful commands log
+timestamp, duration, returncode, and output preview.
 
-**Read-only evidence mounts**
-Images are mounted with `sudo mount -o ro,norecovery`. The filesystem is read-only at the kernel
-level — even if the agent constructed a command that passed all validators, the kernel would block
-any write to `/mnt/<hostname>`. Stronger than a database role because it is enforced at the
-syscall level, not the application level.
+---
 
-**Non-root agent execution**
-The agent runs as `sansforensics`, not root. Image mounting requires `sudo` and is performed
-manually before investigation — the agent itself has no `sudo` access. The setup process and the
-investigation process run with different privileges by design.
+### Read-only evidence mounts
 
-**Adversarial anti-hallucination layer**
-Above the command boundary, the Forensic Auditor provides a second architectural defense against
-LLM reasoning errors. The Auditor receives only the findings list — no access to the Triage
-Agent's reasoning — and re-runs its own tool calls independently. A finding only survives if the
-Auditor can verify it with bytes on disk. On the controller investigation this caught two false
-positives the Triage Agent scored at HIGH confidence (score reduced from 145 → 50).
+Images are mounted `ro,norecovery` at the kernel level. Even if a command passed every
+validator, the kernel blocks any write to `/mnt/<hostname>` at the syscall level. This is
+stronger than a database role — it is not enforced by the application.
+
+`norecovery` prevents the filesystem driver from replaying the journal on mount, which would
+modify metadata even on a read-only image.
+
+---
+
+### Non-root agent execution
+
+The agent runs as `sansforensics` — no `sudo` access. Image mounting requires elevated
+privileges and is performed manually before investigation. The setup process and the
+investigation process run with different privilege levels by design.
+
+---
+
+### Adversarial anti-hallucination layer
+
+Above the command execution boundary, the Forensic Auditor provides a second architectural
+defense against LLM reasoning errors. The Auditor receives only the findings list — no access
+to the Triage Agent's reasoning — and independently re-runs its own tool calls against the same
+evidence. A finding survives only if the Auditor can verify it with bytes on disk.
+
+On the controller investigation this caught two false positives the Triage Agent scored at HIGH
+confidence. Final score: 145 → 50. One confirmed technique, zero false accusations.
+
+---
+
+### Honest scope of the boundary
+
+The validator prevents **writing, destroying, and exfiltrating**. It does not prevent the agent
+from **reading** arbitrary files it has filesystem access to — `cat`, `grep`, `strings`, and
+similar tools can read any path `sansforensics` can reach, including files outside the evidence
+mount. For a SIFT exam workstation this is an accepted limitation: scoping reads to `/mnt/`
+paths only would break legitimate forensic workflows. The read surface is acknowledged, not
+claimed as protected.
 
 ---
 

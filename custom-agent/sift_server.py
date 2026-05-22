@@ -60,8 +60,10 @@ _ALLOWED_BINARIES = frozenset({
     # ── PDF / document ──
     'pdftotext', 'pdfinfo',
     # ── Text processing ──
+    # sed removed: GNU sed's 'e' flag executes arbitrary shell commands,
+    # bypassing all pipeline validation. Use awk or grep instead.
     'grep', 'find', 'cat', 'head', 'tail', 'sort', 'uniq', 'wc',
-    'awk', 'sed', 'cut', 'tr', 'paste', 'split', 'comm', 'diff', 'join',
+    'awk', 'cut', 'tr', 'paste', 'split', 'comm', 'diff', 'join',
     # ── System / path utilities ──
     'stat', 'ls', 'echo', 'printf', 'date', 'basename', 'dirname',
     # ── Encoding ──
@@ -88,9 +90,43 @@ _HARD_BLOCKED = (
     'kill ', 'killall', 'systemctl', 'service ',
     # Command injection via substitution
     '$(', '`',
+    # Variable expansion — ${VAR} can exfiltrate env secrets (e.g. ANTHROPIC_API_KEY)
+    '${',
+    # In-process shell execution via awk/gawk system() and similar builtins
+    'system(',
 )
 
 _REDIR_RE  = re.compile(r'>>\s*(\S+)|(?<![>])>\s*(\S+)')
+
+# xargs flags that consume the next token as a value (not the command)
+_XARGS_ARG_FLAGS = frozenset({
+    '-I', '-n', '-P', '-s', '-L', '-d', '-E', '-a',
+    '--max-args', '--max-procs', '--max-lines',
+    '--delimiter', '--eof', '--replace', '--arg-file',
+})
+
+
+def _check_write_target(raw: str) -> tuple[bool, str]:
+    """
+    Validate that a file write target (redirect or tee) resolves inside reports/.
+    Uses os.getcwd() so the check matches what the shell will actually do —
+    fixing the previous bug where relative paths were joined to _REPORTS instead
+    of cwd, allowing 'reports/audit_log.jsonl' to pass incorrectly.
+    """
+    if raw == '/dev/null':
+        return True, ''
+    resolved = os.path.realpath(
+        raw if os.path.isabs(raw) else os.path.join(os.getcwd(), raw)
+    )
+    # Explicit deny: audit log must never be writable through tool commands
+    if os.path.basename(resolved) == 'audit_log.jsonl':
+        return False, f"write to audit_log.jsonl is blocked"
+    if not (resolved == _REPORTS or resolved.startswith(_REPORTS + os.sep)):
+        return False, (
+            f"write target {raw!r} resolves outside reports/ "
+            f"(resolved: {resolved})"
+        )
+    return True, ''
 
 
 def _split_pipeline(cmd: str) -> list[str]:
@@ -121,10 +157,17 @@ def _split_pipeline(cmd: str) -> list[str]:
 
 def _validate_command(command: str):
     """
-    Three-layer validation.  Returns (allowed: bool, reason: str).
-    Layer 1 — hard-blocked substrings
-    Layer 2 — each pipeline segment's leading binary in _ALLOWED_BINARIES
-    Layer 3 — redirection targets inside reports/ (or /dev/null)
+    Multi-layer validation. Returns (allowed: bool, reason: str).
+
+    Layer 1 — hard-blocked substrings (raw string, before any parsing)
+    Layer 2 — per-pipeline-segment leading binary allowlist
+              + per-binary argument guards:
+                python3/python: -c blocked
+                find:           -exec/-execdir target must be in allowlist
+                xargs:          command argument must be in allowlist
+                tee:            file targets validated same as redirect guard
+    Layer 3 — all write targets (> >> and tee) resolved with os.getcwd()
+              and must land inside reports/; audit_log.jsonl explicitly denied
     """
     cmd_lower = command.lower()
     for token in _HARD_BLOCKED:
@@ -146,24 +189,58 @@ def _validate_command(command: str):
         if binary not in _ALLOWED_BINARIES:
             return False, f"binary {binary!r} not in forensic allowlist"
 
+        # ── python3 / python: block inline execution ──────────────────────
         if binary in ('python3', 'python') and len(tokens) > 1:
             if tokens[1].strip().lower() == '-c':
                 return False, "python3 -c (inline code execution) is blocked"
 
+        # ── find: validate -exec / -execdir target binary ─────────────────
+        if binary == 'find':
+            for i, tok in enumerate(tokens):
+                if tok in ('-exec', '-execdir') and i + 1 < len(tokens):
+                    exec_bin = os.path.basename(tokens[i + 1]).lower()
+                    if exec_bin not in _ALLOWED_BINARIES:
+                        return False, (
+                            f"find {tok} binary {exec_bin!r} "
+                            f"not in forensic allowlist"
+                        )
+
+        # ── xargs: validate the command argument ──────────────────────────
+        if binary == 'xargs':
+            i = 1
+            while i < len(tokens):
+                tok = tokens[i]
+                if tok in _XARGS_ARG_FLAGS:
+                    i += 2  # flag + its value
+                    continue
+                if tok.startswith('-'):
+                    i += 1
+                    continue
+                # First non-flag token is the command xargs will run
+                xargs_bin = os.path.basename(tok).lower()
+                if xargs_bin not in _ALLOWED_BINARIES:
+                    return False, (
+                        f"xargs command {xargs_bin!r} "
+                        f"not in forensic allowlist"
+                    )
+                break
+
+        # ── tee: validate output file targets ─────────────────────────────
+        if binary == 'tee':
+            for tok in tokens[1:]:
+                if not tok.startswith('-'):
+                    ok, reason = _check_write_target(tok)
+                    if not ok:
+                        return False, f"tee target: {reason}"
+
+    # ── Layer 3: shell redirect targets ───────────────────────────────────
     for match in _REDIR_RE.finditer(command):
         raw = match.group(1) or match.group(2)
         if not raw:
             continue
-        if raw == '/dev/null':
-            continue
-        resolved = os.path.realpath(
-            raw if os.path.isabs(raw) else os.path.join(_REPORTS, raw)
-        )
-        if not (resolved == _REPORTS or resolved.startswith(_REPORTS + os.sep)):
-            return False, (
-                f"redirection target {raw!r} resolves outside reports/ "
-                f"(resolved: {resolved})"
-            )
+        ok, reason = _check_write_target(raw)
+        if not ok:
+            return False, f"redirection: {reason}"
 
     return True, ""
 

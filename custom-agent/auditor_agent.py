@@ -74,7 +74,9 @@ Rules:
      was used. Use this when uncertain.
 5. End every response with exactly: VERDICT: <CONFIRMED|REFUTED|INCONCLUSIVE>
 6. Be specific — cite the exact artifact path or registry value you found.
-7. Write in plain prose. No markdown: no #, ##, **, *, -, bullet points, or headers.
+   Reference the Attack Chain step number (e.g. "Step 3") when your finding
+   confirms or refutes a specific row in the Triage Agent's Attack Chain table.
+7. Write in plain prose. One short paragraph per verdict. No extra headers.
 """
 
 _TECHNIQUE_NAMES = {

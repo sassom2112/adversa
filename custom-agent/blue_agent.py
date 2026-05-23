@@ -286,7 +286,7 @@ def parse_findings(tool_outputs, rules=None):
                 f"{data['name']} (+{weight}) {source} via: {matched}"
             )
 
-    return score, hits, reasons
+    return min(score, 100), hits, reasons
 
 
 # ── Pass 1 scan command builders ─────────────────────────────────────────────
@@ -495,12 +495,22 @@ For every service flagged: rip.pl -r SYSTEM -f services to get full service entr
 
 Call run_terminal_command with real SIFT CLI commands. Do NOT repeat Pass 1 commands.
 
-FINAL ASSESSMENT — plain prose, no markdown, no bullets:
-For each confirmed ATT&CK technique write:
-  Technique ID and name. Every confirming artifact with its exact path, MD5 hash, \
-MAC timestamps (from stat output), and execution evidence (prefetch last-run time or \
-event log entry). State the exact command that produced each piece of evidence. \
-Only report what tool output directly shows. No speculation.\
+FINAL ASSESSMENT — use structured markdown with these two required sections:
+
+## Attack Chain
+| Step | Time | Host | User | Technique | Evidence |
+|------|------|------|------|-----------|---------|
+One row per confirmed event in chronological order. \
+Time = exact timestamp from stat or evtx output. \
+Evidence = specific artifact that proves this step: exact path, MD5 hash, prefetch entry, or event ID. \
+No row without a directly observed artifact.
+
+## MITRE ATT&CK Mapping
+| Technique ID | Name | Confidence | Evidence |
+|--------------|------|------------|---------|
+Evidence column = artifact path, hash, event ID, or prefetch entry directly observed in tool output. \
+Confidence = HIGH (artifact + execution proof) / MEDIUM (artifact only) / LOW (indirect signal). \
+Never list a technique without citing the raw evidence that supports it. No speculation.\
 """
 
                 uncovered = (

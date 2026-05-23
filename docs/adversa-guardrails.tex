@@ -3,13 +3,14 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{tikz}
 \usepackage{pifont}
+\usepackage{adjustbox}
 \usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc}
 
 \begin{document}
 
 \begin{figure}[htbp]
 \centering
-\resizebox{\textwidth}{!}{
+\begin{adjustbox}{max size={\textwidth}{\textheight}}
 \begin{tikzpicture}[
     node distance=1.2cm,
     auto,
@@ -124,8 +125,9 @@
     \node (G1) [layer=red!8, draw=red!70!black, below=0.5cm of sep] {
         \textbf{Gate \ding{172} — Hard-Blocked Strings} \\[2pt]
         \footnotesize
-        172 blocked patterns: \texttt{rm}, \texttt{dd}, \texttt{mkfs}, \texttt{shred},
-        \texttt{truncate}, write-mode flags, pipe-to-shell patterns \\[1pt]
+        26 hard-blocked strings: \texttt{shred}, \texttt{mkfs}, \texttt{fdisk}, \texttt{wget},
+        \texttt{curl}, \texttt{ssh}, \texttt{sudo}, \texttt{\$(}, \texttt{system(} \ldots \\[1pt]
+        Destructive · exfil · privilege escalation · injection substitution \\[1pt]
         \textit{Rejected before any further parsing — no exceptions, no prompt-level overrides}
     };
 
@@ -133,9 +135,10 @@
     \node (G2) [layer=orange!10, draw=orange!80!black, below=of G1] {
         \textbf{Gate \ding{173} — Binary Allowlist} \\[2pt]
         \footnotesize
-        173 approved SIFT executables:
+        71 approved forensic binaries:
         \texttt{vol.py} · \texttt{fls} · \texttt{icat} · \texttt{rip.pl} · \texttt{yara} ·
         \texttt{strings} · \texttt{grep} · \texttt{md5sum} · \texttt{xxd} · \texttt{find} \ldots \\[1pt]
+        Note: \texttt{sed} excluded — GNU sed \texttt{-e} flag executes arbitrary shell commands \\[1pt]
         \textit{Unknown binaries rejected unconditionally — allowlist cannot be extended via prompt}
     };
 
@@ -168,7 +171,7 @@
         both anti-hallucination and security properties are enforced architecturally,
         not through prompt instructions. \\[2pt]
         \footnotesize
-        Every command execution is appended to \texttt{chain\_of\_custody.json} for audit.
+        Every command execution is atomically appended to \texttt{audit\_log.jsonl} for audit.
     };
 
     %% ── VERTICAL FLOW ARROWS ─────────────────────────────
@@ -183,7 +186,7 @@
     \draw [arrow, draw=purple!70!black] (G4)       -- (guarantee);
 
 \end{tikzpicture}
-}
+\end{adjustbox}
 \caption{ADVERSA Guardrails — Anti-Hallucination Trust Chain \& MCP Security Boundary}
 \label{fig:adversa_guardrails}
 \end{figure}

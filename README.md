@@ -44,9 +44,11 @@ Detection is backed by **11 operational rules** trained via an adversarial Red v
 
 ```bash
 # Ubuntu / SANS SIFT Workstation (recommended)
+git clone https://github.com/sassom2112/adversa.git
+cd adversa
 python3 -m venv ~/adversa-env
 source ~/adversa-env/bin/activate
-pip install anthropic mcp matplotlib numpy
+pip install -r requirements.txt
 
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```

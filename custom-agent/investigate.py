@@ -229,12 +229,13 @@ def main():
     )
     parser.add_argument('target',
                         help='Mounted image path (e.g. /mnt/nromanoff)')
+    parser.add_argument('ioc_files', nargs='*', metavar='IOC_FILE',
+                        help='IOC JSON files from prior investigations '
+                             '(e.g. reports/nromanoff-iocs.json). '
+                             'If omitted, auto-detected from reports/.')
     parser.add_argument('--no-synthesis', action='store_true',
                         help='Skip LLM synthesis in Triage phase (faster, '
                              'deterministic two-pass scan only)')
-    parser.add_argument('--ioc-file', metavar='PATH',
-                        help='JSON file of case-specific IOCs to add to Pass 1 '
-                             '(c2_ips, filenames, accounts, registry_keys, directories)')
     args = parser.parse_args()
 
     if not os.path.isdir(args.target):
@@ -242,15 +243,14 @@ def main():
         sys.exit(1)
 
     ioc_data = None
-    if args.ioc_file:
-        if not os.path.exists(args.ioc_file):
-            print(f"ERROR: IOC file not found: {args.ioc_file}")
-            sys.exit(1)
-        with open(args.ioc_file) as f:
-            import json as _json
-            ioc_data = _json.load(f)
+    if args.ioc_files:
+        for p in args.ioc_files:
+            if not os.path.exists(p):
+                print(f"ERROR: IOC file not found: {p}")
+                sys.exit(1)
+        ioc_data = merge_iocs(*args.ioc_files)
         n = sum(len(v) for v in ioc_data.values() if isinstance(v, list))
-        print(f"  IOC file: {args.ioc_file} ({n} IOCs)")
+        print(f"  IOC files: {args.ioc_files} ({n} IOCs merged)")
     else:
         # Auto-detect IOC files from prior investigations in this campaign
         ioc_data = _autoload_campaign_iocs(args.target, _REPORTS)

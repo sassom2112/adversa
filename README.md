@@ -75,20 +75,22 @@ What you will see:
 
 ### Investigate multiple hosts (campaign mode)
 
+Each run writes `reports/<hostname>-iocs.json`. Pass those files explicitly to
+subsequent runs so IOCs propagate across the investigation:
+
 ```bash
 python3 custom-agent/investigate.py /mnt/nromanoff
 # → writes reports/nromanoff-iocs.json
 
-python3 custom-agent/investigate.py /mnt/nfury
-# → auto-loads reports/nromanoff-iocs.json
+python3 custom-agent/investigate.py /mnt/nfury reports/nromanoff-iocs.json
+# → merges nromanoff IOCs into nfury scan; writes reports/nfury-iocs.json
 
-python3 custom-agent/investigate.py /mnt/controller
-# → auto-loads reports/nromanoff-iocs.json + reports/nfury-iocs.json
+python3 custom-agent/investigate.py /mnt/controller reports/nromanoff-iocs.json reports/nfury-iocs.json
+# → merges both prior IOC sets into controller scan
 ```
 
-Each run writes a `reports/<hostname>-iocs.json` file. On every subsequent run,
-`investigate.py` scans `reports/` for all IOC files from other hosts and merges
-them automatically — no flags required.
+Omit the IOC files to let `investigate.py` auto-detect all `*-iocs.json` files
+in `reports/` from prior runs.
 
 ### Fast triage only (no API key, < 10 seconds)
 

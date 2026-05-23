@@ -254,18 +254,14 @@ def parse_findings(tool_outputs, rules=None):
     reasons = []
 
     for technique_id, data in patterns.items():
-        matched = [s for s in data['signals'] if s.lower() in text]
+        matched = [s for s in data['signals'] if s.lower().replace('\\\\', '\\') in text]
         if not matched:
             continue
 
         if len(matched) >= 2:
             weight = data['weight']
         else:
-            is_protected = any(
-                p.lower() in matched[0].lower()
-                for p in _PROTECTED_SIGNALS
-            )
-            weight = data['weight'] // 2 if is_protected else 0
+            weight = data['weight'] // 2
 
         if weight > 0:
             if rules:
@@ -457,7 +453,7 @@ async def investigate(target_path, rules=None, no_synthesis=False, ioc_data=None
             }
 
             # ── PASS 2: Agentic investigation loop ────────────────────────
-            if no_synthesis or pass1_score < 15:
+            if no_synthesis or pass1_score < 5:
                 skip_reason = '--no-synthesis' if no_synthesis else f'low confidence (score={pass1_score})'
                 print(f"\n── Pass 2 skipped ({skip_reason}) ────────────────────────")
             else:

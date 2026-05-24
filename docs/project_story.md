@@ -12,7 +12,7 @@ permalink: /story
 **2** triage false positives caught and refuted on physical evidence &nbsp;·&nbsp;
 **100%** of confirmed findings verified against disk artifacts &nbsp;·&nbsp;
 **4-layer** MCP security boundary &nbsp;·&nbsp;
-**11** ASL-trained operational rules deployed
+**9** MITRE techniques covered by corpus-calibrated signal weights
 
 ---
 
@@ -32,7 +32,7 @@ That is the adversarial dynamic in ADVERSA: not Red vs. Blue in training, but Op
 
 ADVERSA investigates any mounted Windows forensic image through a three-phase pipeline, fully autonomous from invocation to HTML report.
 
-**Phase 1 — Deterministic triage.** A Triage Agent dispatches approximately 25 generic SIFT commands in under 60 seconds — no LLM, no case-specific assumptions — and scores the image against 11 ASL-trained rules with MITRE ATT&CK attribution. Every command is invariant across investigations: nothing from a previous case contaminates the baseline sweep.
+**Phase 1 — Deterministic triage.** A Triage Agent dispatches approximately 25 generic SIFT commands in under 60 seconds — no LLM, no case-specific assumptions — and scores the image against corpus-calibrated signal weights across 9 MITRE ATT&CK techniques. Weights are derived from log-odds ratios computed over 800+ labeled malware samples from MalwareBazaar and HybridAnalysis. Every command is invariant across investigations: nothing from a previous case contaminates the baseline sweep.
 
 **Phase 2 — Agentic deep investigation.** A Claude-powered investigation loop with a 75-call tool budget follows up on triage findings. The agent receives an explicit list of what was already checked and a directed list of uncovered investigation domains — event log content, prefetch binary parsing, shellbags, SAM/SECURITY hive extraction, hash verification. It cannot re-run what Pass 1 already covered; every call advances the investigation into new territory.
 
@@ -45,8 +45,8 @@ Multi-host campaigns are supported natively. Confirmed IOCs from one investigati
 ## How We Built It
 
 **One tool, four security layers.** Every forensic action flows through a single MCP primitive: `run_terminal_command`. Behind it is a four-layer validator:
-1. Hard-blocked dangerous strings (`sudo`, command substitution, `shred`, network tools)
-2. A 50-tool SIFT binary allowlist
+1. Hard-blocked dangerous strings (`sudo`, command substitution, `shred`, network tools) — 22 blocked tokens
+2. A 53-tool SIFT binary allowlist
 3. A quote-aware pipeline parser — necessary because standard forensic invocations like `grep -iE '(http|https|ftp)'` contain `|` inside the pattern argument; a naive split would reject `https` as an unlisted binary
 4. A redirect guard that verifies all output lands in `reports/` and nowhere else
 
@@ -56,7 +56,7 @@ Evidence modification is structurally impossible, not just unlikely.
 
 **Plain-text verifiability.** All Auditor output is plain prose. Every confirmed finding in the HTML report cites the exact tool call that produced it. A reviewer can open `reports/audit_log.jsonl`, find the entry, and reproduce the result with one shell command on the same mounted image.
 
-**Grounded detection rules.** The 11 operational rules were seeded by an adversarial training loop (ASL — Adversarial Signal Learning) on 49,519 real Windows Sysmon events from the OTRF Mordor Security Datasets. A Red Agent evolved evasion variants; a Blue Agent extracted literal field values from missed events. Rules are substrings from real telemetry — no synthetic approximations, no hand-authored patterns. They generalise to real disk images because they were learned from real attack data.
+**Corpus-calibrated signal weights.** Detection signals are weighted using log-odds ratios computed from 800+ labeled malware samples sourced from MalwareBazaar and HybridAnalysis. Each signal's weight reflects how discriminative it is between malware and a benign Windows baseline. Cross-technique tokens are dampened (IDF-equivalent); signals from confirmed cases retain a floor weight. No neural network — every weight is a number with a source sample.
 
 ---
 
@@ -94,6 +94,4 @@ The most valuable component is the one nobody asked for. The Auditor was not in 
 
 ## What's Next for ADVERSA
 
-The detection rule foundation needs pool-separation: a signal should only be admitted if it appears in documented attack telemetry and *never* in a real benign baseline. This eliminates the false signal problem at training time rather than relying on the Auditor to catch it at investigation time.
-
-Beyond that: memory forensics integration (Volatility 3 via the MCP layer, for process injection and rootkits invisible on disk), timeline correlation (Plaso super-timeline filtered to confirmed technique time windows), and coverage expansion from 11 to 50+ MITRE techniques via automatic Mordor dataset enumeration.
+Expand corpus coverage to 50+ MITRE techniques and grow the labeled sample set. Timeline correlation via Plaso super-timeline filtered to confirmed technique time windows. Coverage of memory-resident-only techniques where disk artifacts are intentionally absent.

@@ -33,35 +33,35 @@
 }
 
 %% ── Front matter ────────────────────────────────────────────────────────────
-\title{find-evil: Autonomous Adversarial Red–Blue Learning for\\
-       Windows Forensic Triage}
+\title{find-evil: Corpus-Calibrated Signal Detection with Adversarial\\
+       Audit for Autonomous Windows Forensic Triage}
 
 \author{SANS DFIR Hackathon 2026}
 \affiliation{\institution{Category 7 — Persistent Learning Loop}}
 \email{sassom2112@gmail.com}
 
 \begin{abstract}
-find-evil automates both sides of the adversarial arms race in digital
-forensics and incident response (DFIR). A Red Agent draws from
-\num{49519} real Windows Sysmon events sourced from the OTRF Mordor
-Security Datasets and evolves evasion variants when caught. A Blue
-Agent detects, misses, and learns—without human labeling or manually
-authored rules. Over \num{4500} iterations, the system recovered from
-a domain-gap collapse at iteration~10 (10\% detection) to 76\%
-detection with F1~=~0.72, generating \num{2031} adversarial evasion
-variants and extracting 151 grounded signals across 8 MITRE ATT\&CK
-techniques. The trained signals are exported as 11 operational rules
-that drive a two-pass forensic investigation system: a generic
-deterministic triage stage followed by a fully agentic Claude-powered
-investigation loop, validated on four machines from an APT intrusion
-with Chinese-language artifacts. A Forensic Auditor challenges every
-detected technique under a bounded tool-call budget, correctly
-refuting false positives on two machines. Custom agent findings trace
-to specific forensic tool calls in an append-only audit log.
+find-evil (ADVERSA) automates Windows forensic triage and investigation
+through a three-phase pipeline: deterministic signal scanning, agentic
+LLM investigation, and adversarial audit. Detection signals are
+calibrated using log-odds ratios derived from \num{800}+ labeled malware
+samples sourced from MalwareBazaar and HybridAnalysis, covering 9 MITRE
+ATT\&CK techniques. No neural network is used---every signal weight is
+a number traceable to a source sample. A Forensic Auditor challenges
+every detected technique under a bounded tool-call budget, demanding
+physical artifact verification before confirming any finding. The system
+was validated on four machines from an APT intrusion: it correctly
+identified the attack chain (credential dumping, C2 via httppump,
+lateral movement via PsExec, exfiltration via RAR archive), refuted
+false positives on two machines, and produced a complete IOC set linking
+the \texttt{vibranium} domain account across the enterprise. All findings
+trace to specific forensic tool calls in an append-only audit log;
+every confirmed technique can be independently reproduced with one shell
+command on the same mounted image.
 \end{abstract}
 
-\keywords{digital forensics, adversarial machine learning, MITRE
-ATT\&CK, DFIR automation, Sysmon, threat detection, adversarial signal learning}
+\keywords{digital forensics, MITRE ATT\&CK, DFIR automation, log-odds
+scoring, corpus calibration, adversarial audit, LLM agents, threat detection}
 
 %%─────────────────────────────────────────────────────────────────────────────
 \begin{document}

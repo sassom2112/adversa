@@ -5,14 +5,14 @@ investigate.py -- Adversarial Investigation Orchestrator
 Sequences: Triage Agent (The Optimist) -> Forensic Auditor (The Cynic)
 Produces a unified report and argumentation transcript.
 
-The transcript (every Triage finding + every Auditor challenge + every
-verdict) is the primary submission artifact demonstrating the adversarial
-verification loop.
+Usage — simple (point at case directory, auto-discovers everything):
+    python3 custom-agent/investigate.py --case /cases/nfury
+    python3 custom-agent/investigate.py --case /cases/nfury --triage   # fast, no AI loop
 
-Usage:
-    python3 custom-agent/investigate.py /mnt/nromanoff
+Usage — explicit paths (disk must already be mounted):
+    python3 custom-agent/investigate.py /mnt/nfury
+    python3 custom-agent/investigate.py /mnt/nfury --memory /cases/nfury/mem.001
     python3 custom-agent/investigate.py /mnt/nfury --no-synthesis
-    python3 custom-agent/investigate.py /mnt/controller --no-synthesis
 """
 
 import argparse
@@ -20,6 +20,7 @@ import asyncio
 import glob
 import json
 import os
+import shlex
 import sys
 from datetime import datetime, timezone
 
@@ -292,6 +293,71 @@ async def run_investigation(target_path: str, no_synthesis: bool = False,
     return unified
 
 
+def _discover_case(case_dir: str) -> tuple[str | None, str | None, str]:
+    """
+    Scan a case directory and return (disk_mount, memory_path, host).
+
+    Finds:
+      - *.E01 / *.e01       → disk image (checks common SIFT mount points)
+      - *.001 / *.raw / *.img / *.mem  → memory image (used directly)
+
+    Returns disk_mount=None if the E01 is not yet mounted, and prints
+    the exact commands needed to mount it.
+    """
+    case_dir = os.path.realpath(case_dir)
+    host     = os.path.basename(case_dir.rstrip('/'))
+
+    # Walk case dir for known file types (one level deep)
+    e01_files  = []
+    mem_files  = []
+    for root, _dirs, files in os.walk(case_dir):
+        for fname in files:
+            path = os.path.join(root, fname)
+            low  = fname.lower()
+            if low.endswith('.e01') and not low.endswith('.e01.txt'):
+                e01_files.append(path)
+            elif any(low.endswith(ext) for ext in ('.001', '.raw', '.img', '.mem', '.vmem')):
+                if not low.endswith('.001.txt'):
+                    mem_files.append(path)
+
+    memory_path = mem_files[0] if mem_files else None
+    if len(mem_files) > 1:
+        # Prefer files that look like memory (not split disk segments)
+        mem_files = [p for p in mem_files
+                     if any(k in p.lower() for k in ('mem', 'ram', 'vmem', 'memory'))]
+        memory_path = mem_files[0] if mem_files else memory_path
+
+    disk_mount = None
+    if e01_files:
+        e01 = e01_files[0]
+        # Check common SIFT mount locations
+        candidates = [
+            f'/mnt/{host}',
+            f'/mnt/ewf_{host}',
+            '/mnt/windows_mount',
+            '/mnt/image_mount',
+        ]
+        for mp in candidates:
+            if os.path.isdir(mp) and os.listdir(mp):
+                disk_mount = mp
+                break
+
+        if not disk_mount:
+            ewf_mp = f'/mnt/ewf_{host}'
+            disk_mp = f'/mnt/{host}'
+            print(f"\n  ⚠️  E01 found but not mounted: {e01}")
+            print(f"  Mount it with:")
+            print(f"    sudo mkdir -p {ewf_mp} {disk_mp}")
+            print(f"    sudo ewfmount {shlex.quote(e01)} {ewf_mp}")
+            print(f"    sudo mmls {ewf_mp}/ewf1   # find the partition offset (sectors)")
+            print(f"    sudo mount -o ro,loop,offset=$((OFFSET*512)) {ewf_mp}/ewf1 {disk_mp}")
+            print(f"  Then re-run this command.\n")
+    else:
+        print(f"  ℹ️  No E01 image found in {case_dir} — memory-only investigation")
+
+    return disk_mount, memory_path, host
+
+
 def _save_unified(host: str, report: dict) -> str:
     path = os.path.join(_REPORTS, f'{host}-investigation.json')
     os.makedirs(_REPORTS, exist_ok=True)
@@ -304,23 +370,75 @@ def _save_unified(host: str, report: dict) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Adversarial Investigation Orchestrator — '
-                    'Triage Agent -> Forensic Auditor -> Unified Report'
+        description='ADVERSA Investigation Orchestrator — '
+                    'Disk + Memory Triage -> Forensic Auditor -> Unified Report',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Simple — auto-discovers disk mount and memory image from case directory
+  python3 custom-agent/investigate.py --case /cases/nfury
+
+  # Fast triage only (deterministic, no AI agentic loop — ~2 min)
+  python3 custom-agent/investigate.py --case /cases/nfury --triage
+
+  # Full investigation with explicit paths (disk must be pre-mounted)
+  python3 custom-agent/investigate.py /mnt/nfury --memory /cases/nfury/mem.001
+        """
     )
-    parser.add_argument('target',
-                        help='Mounted image path (e.g. /mnt/nromanoff)')
+
+    # ── Simple mode ─────────────────────────────────────────────────────────
+    parser.add_argument('--case', metavar='CASE_DIR',
+                        help='Case directory — auto-discovers disk mount and '
+                             'memory image (e.g. /cases/nfury)')
+    parser.add_argument('--triage', action='store_true',
+                        help='Fast mode: deterministic Pass 1 only, no AI '
+                             'agentic loop (~2 min vs ~10 min for full)')
+
+    # ── Explicit mode (advanced) ─────────────────────────────────────────────
+    parser.add_argument('target', nargs='?',
+                        help='Mounted disk image path (e.g. /mnt/nfury). '
+                             'Not needed when using --case.')
     parser.add_argument('ioc_files', nargs='*', metavar='IOC_FILE',
-                        help='IOC JSON files from prior investigations '
-                             '(e.g. reports/nromanoff-iocs.json). '
-                             'If omitted, auto-detected from reports/.')
+                        help='IOC JSON files from prior investigations. '
+                             'Auto-detected from reports/ if omitted.')
     parser.add_argument('--memory', metavar='MEMORY_PATH',
-                        help='Raw memory image path — runs disk and memory '
-                             'triage in parallel '
-                             '(e.g. /cases/nfury/win7-64-nfury-memory-raw.001)')
+                        help='Raw memory image path (explicit mode only).')
     parser.add_argument('--no-synthesis', action='store_true',
-                        help='Skip LLM synthesis in Triage phase (faster, '
-                             'deterministic two-pass scan only)')
+                        help='Alias for --triage.')
     args = parser.parse_args()
+
+    # Resolve no-synthesis alias
+    no_synthesis = args.triage or args.no_synthesis
+
+    # ── Case-discovery mode ──────────────────────────────────────────────────
+    if args.case:
+        if not os.path.isdir(args.case):
+            print(f"ERROR: case directory not found: {args.case}")
+            sys.exit(1)
+        disk_mount, memory_path, host = _discover_case(args.case)
+
+        if not disk_mount and not memory_path:
+            print("ERROR: no mounted disk and no memory image found — nothing to investigate")
+            sys.exit(1)
+        if not disk_mount:
+            # Memory-only: still useful
+            print(f"  Running memory-only investigation (no mounted disk found)")
+            mem_result = asyncio.run(
+                memory_agent.investigate(memory_path, host=host, no_synthesis=no_synthesis)
+            )
+            print(f"\n  Memory score: {mem_result[0]}  techniques: {list(mem_result[1].keys())}")
+            return
+
+        ioc_data = _autoload_campaign_iocs(disk_mount, _REPORTS)
+        os.environ['BLUE_TARGET'] = disk_mount
+        asyncio.run(run_investigation(disk_mount, no_synthesis=no_synthesis,
+                                      memory_path=memory_path, ioc_data=ioc_data))
+        return
+
+    # ── Explicit mode ────────────────────────────────────────────────────────
+    if not args.target:
+        parser.print_help()
+        sys.exit(1)
 
     if not os.path.isdir(args.target):
         print(f"ERROR: {args.target} not found or not mounted")
@@ -340,13 +458,11 @@ def main():
         n = sum(len(v) for v in ioc_data.values() if isinstance(v, list))
         print(f"  IOC files: {args.ioc_files} ({n} IOCs merged)")
     else:
-        # Auto-detect IOC files from prior investigations in this campaign
         ioc_data = _autoload_campaign_iocs(args.target, _REPORTS)
 
     os.environ['BLUE_TARGET'] = args.target
-    asyncio.run(run_investigation(args.target, no_synthesis=args.no_synthesis,
-                                  memory_path=args.memory,
-                                  ioc_data=ioc_data))
+    asyncio.run(run_investigation(args.target, no_synthesis=no_synthesis,
+                                  memory_path=args.memory, ioc_data=ioc_data))
 
 
 if __name__ == '__main__':

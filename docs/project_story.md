@@ -8,90 +8,128 @@ permalink: /story
 
 **SANS FIND EVIL! Hackathon 2026 | Category 7: Persistent Learning Loop**
 
-**4** APT machines confirmed compromised &nbsp;·&nbsp;
-**2** triage false positives caught and refuted on physical evidence &nbsp;·&nbsp;
+**9** MITRE techniques covered &nbsp;·&nbsp;
+**800+** labeled malware samples in corpus &nbsp;·&nbsp;
 **100%** of confirmed findings verified against disk artifacts &nbsp;·&nbsp;
 **4-layer** MCP security boundary &nbsp;·&nbsp;
-**9** MITRE techniques covered by corpus-calibrated signal weights
+**17 minutes · $14** per full disk + memory investigation
 
 ---
 
 ## Inspiration
 
-Every LLM-based forensic tool has the same problem: the model *wants* to find evidence. It is helpful by design. Give it a disk image and ask whether credential dumping occurred, and it will find something that looks like credential dumping — whether or not the binary is actually on disk.
+A coordinated intrusion compromised the GTG-1002 domain in under ten minutes. The bits recording that fact were frozen the moment the images were acquired. And yet a traditional DFIR team would take days to fully characterize what happened — not because the evidence is missing, but because of a fundamental orchestration bottleneck.
 
-The standard answer is prompt engineering: tell the model to be careful, to be skeptical, to only report confirmed findings. Prompt controls are not security controls. They can be overridden, forgotten, or simply ignored when the model is confident.
+A senior examiner sitting at a SIFT workstation does not lack tools or knowledge. They lack machine-speed synthesis. Manually invoking Volatility, RegRipper, The Sleuth Kit, and YARA, then translating fragmented text output from each into a cohesive timeline, is inherently sequential and inherently slow. When fifty endpoints are hit simultaneously, you cannot scale human analysts to match.
 
-ADVERSA answers a different question: what if the architecture *itself* made hallucinating a confirmed finding structurally impossible? Not unlikely. Impossible. A finding is only confirmed when a second independent agent — one instructed to distrust the first — calls a forensic tool and reads the actual bytes off the disk. If the file is not there, the technique is refuted. No amount of model confidence changes that.
+The question we set out to answer: **can we compress Time-to-Understanding from 48 hours to under 30 minutes without sacrificing forensic integrity?**
 
-That is the adversarial dynamic in ADVERSA: not Red vs. Blue in training, but Optimist vs. Cynic in investigation. The Triage Agent proposes. The Forensic Auditor demands proof.
+The harder question we did not expect to face: **can we prevent the AI itself from manufacturing the findings we asked it to find?**
+
+LLMs hallucinate because they are trained to be helpful. Ask one whether credential dumping occurred on a disk image and it will find something that looks like credential dumping — whether or not the binary is actually on disk. The standard answer is prompt engineering: tell the model to be skeptical. Prompt controls are not security controls. They can be overridden, forgotten, or ignored when the model is confident.
+
+ADVERSA is built around a different premise. **A finding is only CONFIRMED when a second independent agent — one instructed to distrust the first — calls a forensic tool and reads the actual bytes off the disk.** If the file is not there, the technique is refuted. No amount of model confidence changes that.
 
 ---
 
 ## What It Does
 
-ADVERSA investigates any mounted Windows forensic image through a three-phase pipeline, fully autonomous from invocation to HTML report.
+ADVERSA investigates any mounted Windows forensic image through a four-phase pipeline, fully autonomous from invocation to HTML report.
 
-**Phase 1 — Deterministic triage.** A Triage Agent dispatches approximately 25 generic SIFT commands in under 60 seconds — no LLM, no case-specific assumptions — and scores the image against corpus-calibrated signal weights across 9 MITRE ATT&CK techniques. Weights are derived from log-odds ratios computed over 800+ labeled malware samples from MalwareBazaar and HybridAnalysis. Every command is invariant across investigations: nothing from a previous case contaminates the baseline sweep.
+**Phase 1 — Deterministic triage.** Approximately 25 generic SIFT commands run in under 60 seconds with no LLM involvement. The image is scored against corpus-calibrated signal weights: log-odds ratios computed from 800+ labeled malware samples sourced from MalwareBazaar and HybridAnalysis, covering 9 MITRE ATT&CK techniques. Every command is invariant across investigations — nothing from a previous case contaminates the baseline sweep. The triage net is deliberately wide; the Auditor narrows it.
 
-**Phase 2 — Agentic deep investigation.** A Claude-powered investigation loop with a 75-call tool budget follows up on triage findings. The agent receives an explicit list of what was already checked and a directed list of uncovered investigation domains — event log content, prefetch binary parsing, shellbags, SAM/SECURITY hive extraction, hash verification. It cannot re-run what Pass 1 already covered; every call advances the investigation into new territory.
+**Phase 2 — Agentic deep investigation.** A Claude-powered loop with a 75-call tool budget investigates the gaps: event log content, prefetch binary parsing, shellbags, SAM/SECURITY hive extraction, LNK files, hash verification. Critically, the agent receives raw artifacts only — no Pass 1 score, no technique labels. This is an architectural decision, not a prompt instruction. Passing the triage score created measurable confirmation bias: the LLM anchored to what it was told was suspicious rather than reasoning from evidence. The fix was decoupling the two passes entirely.
 
-**Phase 3 — Forensic Auditor.** After the Triage Agent completes, the Forensic Auditor challenges every detected technique in parallel (`asyncio.gather`), running up to three rounds of two tool calls each. The rule is simple: identify the artifact that *must* physically exist on disk if this technique executed, then look for it. Signal string-match alone never confirms a finding. A finding is CONFIRMED only when the definitive artifact is present; REFUTED when the Auditor finds positive evidence of absence.
+**Memory analysis — Volatility 3 in parallel.** A separate memory analysis path runs concurrently against the raw memory image, surfacing process injection, VAD anomalies, and runtime artifacts invisible on disk. Techniques confirmed in memory without disk evidence are scored independently and correlated at the auditor stage.
 
-Multi-host campaigns are supported natively. Confirmed IOCs from one investigation feed the next automatically, and `adversa-merge-iocs.sh` merges findings across hosts into a unified campaign IOC set.
+**Phase 3 — Forensic Auditor.** After triage completes, the Auditor challenges every detected technique in parallel (`asyncio.gather`), running up to 5 rounds of 2 independent tool calls per technique. The Auditor receives the findings list only — no access to triage reasoning, no shared session state. Its mandate: *assume every finding is a false positive until the filesystem proves otherwise.* A CONFIRMED verdict requires a positive tool return value. REFUTED requires evidence of absence. Model confidence produces neither.
+
+Confirmed IOCs propagate automatically to subsequent host investigations. The same attacker account, C2 IP, or malware hash found on nfury is injected as a priority signal when controller is investigated next.
 
 ---
 
 ## How We Built It
 
-**One tool, four security layers.** Every forensic action flows through a single MCP primitive: `run_terminal_command`. Behind it is a four-layer validator:
-1. Hard-blocked dangerous strings (`sudo`, command substitution, `shred`, network tools) — 22 blocked tokens
-2. A 53-tool SIFT binary allowlist
-3. A quote-aware pipeline parser — necessary because standard forensic invocations like `grep -iE '(http|https|ftp)'` contain `|` inside the pattern argument; a naive split would reject `https` as an unlisted binary
-4. A redirect guard that verifies all output lands in `reports/` and nowhere else
+**Signal weights from real malware, not hand-authored rules.**
+Detection signals are weighted using log-odds ratios:
 
-Evidence modification is structurally impossible, not just unlikely.
+```
+log_odds = log2( (p_malware + 0.05) / (p_benign + 0.05) )
+weight   = normalize(log_odds) → [0, 1]
+```
 
-**Append-only audit log.** Every tool call is written to the audit log *before* it executes: the command, the agent that called it, a timestamp, and whether the validator passed or blocked it. Chain of custody is a property of the system by construction, not a report we produce afterward.
+800+ labeled samples from MalwareBazaar and HybridAnalysis provide the malware frequency estimates. A curated benign baseline of common Windows system strings provides the denominator. Cross-technique tokens are dampened (IDF-equivalent). Signals from confirmed cases retain a floor weight. Every weight is traceable to a source SHA256 — not a model parameter, not an analyst's intuition.
 
-**Plain-text verifiability.** All Auditor output is plain prose. Every confirmed finding in the HTML report cites the exact tool call that produced it. A reviewer can open `reports/audit_log.jsonl`, find the entry, and reproduce the result with one shell command on the same mounted image.
+Sysmon-domain signals trained adversarially on 49,519 real OTRF/Mordor events supplement this corpus. A Red Agent evolves evasion variants; a Blue Agent extracts discriminating field values from misses. These rules fire on Sysmon telemetry-adjacent artifacts but carry a documented domain gap on raw disk forensic output — acknowledged, not claimed as disk-validated.
 
-**Corpus-calibrated signal weights.** Detection signals are weighted using log-odds ratios computed from 800+ labeled malware samples sourced from MalwareBazaar and HybridAnalysis. Each signal's weight reflects how discriminative it is between malware and a benign Windows baseline. Cross-technique tokens are dampened (IDF-equivalent); signals from confirmed cases retain a floor weight. No neural network — every weight is a number with a source sample.
+**One tool, four security layers.**
+Every forensic action flows through a single MCP primitive: `run_terminal_command`. Behind it is a four-gate validator enforced in Python before any subprocess call:
+
+1. **22 hard-blocked tokens** — destructive ops (`shred`, `mkfs`, `fdisk`), exfil (`wget`, `curl`, `nc`, `ssh`), privilege escalation (`sudo`, `pkexec`), injection (`$(`, `` ` ``, `${`, `system(`), specific service control verbs
+2. **53-binary SIFT allowlist** — unknown binaries rejected unconditionally; `sed` excluded because its `-e` flag passes the pattern space to the shell
+3. **Quote-aware pipeline parser** — each pipe segment validated independently; handles `grep -iE '(http|https|ftp)'` without splitting on `|` inside quoted arguments
+4. **Write-target guard** — all `>`, `>>`, and `tee` targets resolved with `os.path.realpath` and must land inside `reports/`; symlink traversal and `../` injection fail at the math level
+
+Evidence modification is structurally impossible — not prompt-dependent.
+
+**Append-only audit log.**
+Every command is atomically appended via `os.open + os.write` before `subprocess.run` is called. Blocked commands log `blocked_reason`. The audit trail cannot be overwritten through a tool call. A reviewer can open `reports/audit_log.jsonl` and reproduce any finding with one shell command on the same mounted image.
 
 ---
 
 ## Challenges We Ran Into
 
-The hardest engineering problem was the validator rejecting legitimate forensic commands. The first version used a regex to split on `|` and checked each segment's leading binary against the allowlist. The first time the Triage Agent ran `grep -iE '(http|https|ftp)'`, the validator split it into three segments and rejected `https` as an unlisted binary. Fixing this required a quote-aware parser that tracks single-quoted substrings and correctly identifies `|` inside a quoted argument as part of the argument, not a pipeline separator.
+**Confirmation bias in the agentic pass.** The original design passed the Pass 1 triage score and technique labels into the Pass 2 system prompt. In practice the LLM anchored to those labels and found supporting evidence for what it was already told was suspicious. The fix required treating Pass 1 and Pass 2 as fully decoupled: Pass 2 receives raw artifact strings and nothing else. The triage score is computed independently after both passes complete.
 
-The harder intellectual problem was false positives. Pass 1 triage on the controller host returned a score of 145 with three detected techniques. Two were wrong: masquerading signals triggered by legitimate `svchost.exe` copies in WinSxS, and account discovery signals triggered by a user profile *directory* rather than active enumeration tools. Without the Auditor, an analyst would have received three work items. With the Auditor, they received one — the only technique that left a physical artifact.
+**The validator blocking legitimate forensic commands.** The first version split on `|` and checked each segment's leading binary. The first time the agent ran `grep -iE '(http|https|ftp)'`, the validator split on the `|` characters inside the single-quoted regex and rejected `https` as an unlisted binary. Fixing this required a quote-aware parser that tracks single-quoted substrings and treats `|` inside them as argument content, not a pipeline separator.
+
+**Over-broad security blocking.** `'service '` was hard-blocked to prevent service management commands. It also blocked every EvtxECmd invocation that queried EventID 7045 (service installs) — which is how PsExec leaves forensic traces. The block was narrowed to specific control verbs (`service start`, `service stop`, `service restart`, `service delete`). T1569.002 went from wrongly refuted to correctly challenged.
+
+**Case sensitivity on Linux NTFS mounts.** Windows XP stores hives at `WINDOWS/system32/config/`. Windows 7 uses `Windows/System32/config/`. On a Linux NTFS mount these are different paths. Every hardcoded path assumption silently fails. The fix was runtime path probing via `os.listdir()` wrapped in helper functions shared across the pipeline.
+
+**Registry hive encoding.** `strings` extracts ASCII. Windows registry hives store content as UTF-16LE. Half of our early false negatives from SOFTWARE and SYSTEM hive queries were caused by this single environment quirk — fixed by switching to `strings -e l`.
+
+**Signal noise from the corpus.** MalwareBazaar and HybridAnalysis metadata contains AV classification labels (`generic`, `trojan`, `bounty`) that appear across virtually every sample. Without filtering, these tokens dominated the corpus and produced high weights for content-free strings. The fix was an AV noise frozenset and a version string regex applied at corpus ingestion time.
 
 ---
 
-## Accomplishments That We're Proud Of
+## Accomplishments
 
-Four real APT machines from a single intrusion, investigated autonomously with a consistent pipeline and a complete audit trail.
+**nfury — full pipeline confirmed an APT1 attack chain autonomously.**
 
-**nfury:** T1003.001 confirmed with `hydrakatz.exe` found on disk and hash-verified; T1087.001 confirmed via SAM hive analysis. Score 95, no false positives.
+The image scored 100/100 on triage (disk and memory). The Auditor processed 9 flagged techniques across 25 argumentation rounds. Two survived:
 
-**controller:** Triage score 145 reduced to 50 by the Auditor. Two false positives refuted on physical evidence — the exact distinction between "this binary exists in a legitimate Windows location" and "this binary was placed there by an attacker." One technique confirmed: `procdump.exe` in `/Tools/SysInternals/` and `spinlock.exe` in the WER ReportQueue crash dump, confirming the implant executed on this machine.
+- **T1003.002** — SAM credential dump confirmed via registry hive extraction
+- **T1055** — Process injection confirmed via memory analysis of the `a.exe` loader
 
-**tdungan:** Investigated as a blind forward-validation with campaign IOCs from the merged nfury and controller investigations. T1003.001, T1204.002, and T1059 confirmed with physical artifact verification.
+Seven were refuted. The attack chain: httppump C2 at `199.73.28.114/ads/`, attacker account `vibranium` (domain SID -1673), lateral movement via PsExec, exfiltration via `system4.rar`. Total runtime: 17 minutes. Total cost: $14.
 
-The `vibranium` domain account and `spinlock.exe` implant were identified across the enterprise from signals that were extracted from a completely different dataset — Mordor Sysmon telemetry from 2019, not from these images.
+**The auditor refutation rate is the result, not a failure.** On nfury: 9 detected, 2 confirmed. An analyst who received 9 unverified technique flags would open 9 investigation threads. An analyst who receives 2 confirmed findings with physical artifact citations and 7 explicit refutals with reasoning opens 2. The Auditor's job is to narrow — and it did.
+
+**Architectural anti-hallucination.** The controller investigation (earlier pipeline version) produced a triage score of 145 across 3 techniques. The Auditor refuted 2 on physical evidence — legitimate `svchost.exe` in WinSxS, a user profile directory mistaken for active enumeration. Final score: 50. One confirmed technique, zero false accusations.
+
+**Every confirmed finding is independently reproducible.** The audit log contains the exact command, the exact output, and the exact timestamp. There are no findings that require trusting the model.
 
 ---
 
 ## What We Learned
 
-Physical artifact verification is not a feature. It is the only thing that separates a forensic finding from a model opinion. Every architecture decision in ADVERSA follows from that single principle.
+**Architectural separation is the only reliable anti-hallucination mechanism.** Prompt instructions telling the model to be skeptical produce a skeptical-sounding model. A second agent with its own MCP session that physically cannot confirm a finding without a positive tool return value produces a verified finding. These are not equivalent.
 
-Architectural guardrails beat prompt controls. The four-layer MCP boundary means no version of the model can write to evidence directories, spawn network connections, or execute arbitrary shell code — not because we told it not to, but because those paths don't exist in the validator. The Forensic Auditor's refutation of false positives works the same way: the model cannot confirm a technique without calling a tool and reading actual output. Confidence is not evidence.
+**Decoupling passes eliminates anchoring bias.** Passing triage results into the investigative pass creates a model that confirms what it was told to look for. Passing only raw artifacts creates a model that reasons from evidence. The difference in output quality was immediately measurable.
 
-The most valuable component is the one nobody asked for. The Auditor was not in the original design. Adding a second agent whose only job is to disprove the first agent's findings turned a triage tool into an investigation system.
+**Generic signals and case IOCs are fundamentally different things.** A signal that fires on `psexesvc` in a malware corpus generalizes. A signal that fires on `199.73.28.114` is a case-specific IOC. Baking IOCs into the detection layer inflates scores on familiar images without generalizing to new ones. ADVERSA separates these explicitly — corpus weights are generic, IOC files are opt-in at runtime.
+
+**One confirmed case is more defensible than ten unverified ones.** The pressure to show results on all four hackathon hosts is real. The honest answer is that the full-pipeline system (corpus-calibrated weights, decoupled passes, fixed auditor) was validated on nfury. Earlier results on controller and tdungan reflect a different version of the pipeline. We report them separately.
 
 ---
 
-## What's Next for ADVERSA
+## What's Next
 
-Expand corpus coverage to 50+ MITRE techniques and grow the labeled sample set. Timeline correlation via Plaso super-timeline filtered to confirmed technique time windows. Coverage of memory-resident-only techniques where disk artifacts are intentionally absent.
+**Second case validation.** nfury is one data point. The honest next step is running the current system on a host it has never seen and measuring false positive rate, missed techniques, and auditor correction rate independently.
+
+**Technique coverage expansion.** Corpus weights cover 9 MITRE techniques. The MalwareBazaar and HybridAnalysis APIs can scale this to 50+ with additional corpus collection runs.
+
+**Timeline correlation.** Plaso is on every SIFT workstation. Filtering a supertimeline to the 4-minute window around a confirmed technique execution turns individual artifact matches into activity chains — the difference between "this binary existed on disk" and "this binary ran at 14:32:07, four minutes before this network connection."
+
+**Memory-resident technique coverage.** Techniques that deliberately avoid disk artifacts require memory-first analysis. The Volatility 3 path exists; expanding it to cover process hollowing, DKOM, and kernel rootkit signatures is the next engineering target.

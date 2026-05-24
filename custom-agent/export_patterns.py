@@ -49,19 +49,15 @@ def _load_domain_rules(state_path, domain, min_weight):
 
 def export_patterns(state_path=None,
                     output_path=None,
-                    min_weight=35,
-                    disk_state_path=None):
+                    min_weight=35):
     if state_path is None:
         state_path = _DEFAULT_STATE
     if output_path is None:
         output_path = _DEFAULT_OUTPUT
 
-    sysmon_exists = os.path.exists(state_path)
-    if not sysmon_exists and not disk_state_path:
+    if not os.path.exists(state_path):
         print(f"No brain state found at {state_path} — run brain.py first")
         return None
-    if not sysmon_exists:
-        print(f"No Sysmon brain state — exporting disk-domain only")
 
     iteration = 0
     patterns  = {}
@@ -91,28 +87,7 @@ def export_patterns(state_path=None,
         else:
             skipped.append(f"{technique_id} (weight={weight})")
 
-    # ── Merge disk-domain patterns if --disk-state provided ────────────────
-    disk_rules, disk_iter = {}, 0
-    if disk_state_path:
-        disk_rules, disk_iter = _load_domain_rules(
-            disk_state_path, 'disk_domain', min_weight
-        )
-        for tid, drule in disk_rules.items():
-            if tid in operational_rules:
-                # Merge signals, keeping unique values, source = both
-                existing  = operational_rules[tid]
-                merged_sigs = list(dict.fromkeys(
-                    existing['signals'] + drule['signals']
-                ))
-                operational_rules[tid] = {
-                    **existing,
-                    'signals':  merged_sigs,
-                    'weight':   max(existing['weight'], drule['weight']),
-                    'source':   'asl_trained+disk_domain',
-                }
-            else:
-                operational_rules[tid] = drule
-        print(f"Disk-domain rules:   {len(disk_rules)} (iteration {disk_iter})")
+    disk_iter = 0
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, 'w') as f:
@@ -142,15 +117,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--min-weight', type=int, default=35)
     parser.add_argument('--state', default=_DEFAULT_STATE)
-    parser.add_argument('--disk-state', default=None,
-                        help='Forensic-domain brain state to merge (forensic_brain_state.json)')
+
     parser.add_argument('--output', default=_DEFAULT_OUTPUT)
     parser.add_argument('--no-sigma', action='store_true',
                         help='Skip Sigma rule generation after export')
     args = parser.parse_args()
 
     rules = export_patterns(args.state, args.output, args.min_weight,
-                            disk_state_path=args.disk_state)
+                            )
 
     if rules and not args.no_sigma:
         print('\n── Sigma rule generation ──')

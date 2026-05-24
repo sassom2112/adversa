@@ -56,6 +56,16 @@ _BORING_FILENAMES = frozenset({
     'powershell.exe', 'msiexec.exe', 'dllhost.exe', 'taskhost.exe',
     'ntoskrnl.exe', 'hal.dll', 'ntdll.dll', 'kernel32.dll', 'user32.dll',
     'advapi32.dll', 'msvcrt.dll', 'shell32.dll', 'ole32.dll', 'rpcrt4.dll',
+    # VC++ runtimes (all versions)
+    'msvcm90.dll', 'msvcp90.dll', 'msvcr90.dll',
+    'msvcm80.dll', 'msvcp80.dll', 'msvcr80.dll',
+    # .NET / Python runtimes
+    'mscorlib.dll', 'python27.dll', 'python25.dll',
+    'pywintypes27.dll', 'pywintypes25.dll',
+    # Built-in Windows tools always present on disk
+    'reg.exe',
+    # McAfee / AV agent binary shipped with many enterprise images
+    'mfevtps.exe',
 })
 
 # Techniques associated with account discovery / creation

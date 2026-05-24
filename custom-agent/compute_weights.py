@@ -289,6 +289,18 @@ def main():
     print("\nComputing weights...")
     weights = compute_signal_weights(corpus, args.min_samples, args.verbose)
 
+    # Zero out signals that corpus incorrectly promotes — ASL-learned noise
+    _ZERO_OVERRIDES: dict[str, list[str]] = {
+        'T1059.001': ['svchost.exe', '4663', '5156'],
+        'T1087.001': ['5156', 'sesecurityprivilege'],
+        'T1548.002': ['consent.exe'],
+    }
+    for tid, signals in _ZERO_OVERRIDES.items():
+        if tid in weights:
+            for sig in signals:
+                if sig in weights[tid]['signals']:
+                    weights[tid]['signals'][sig] = 0.0
+
     os.makedirs(os.path.dirname(_OUT_PATH), exist_ok=True)
     with open(_OUT_PATH, 'w') as f:
         json.dump(weights, f, indent=2)

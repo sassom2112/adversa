@@ -87,7 +87,8 @@ _HARD_BLOCKED = (
     # Privilege escalation
     'sudo ', 'su ', 'pkexec',
     # Process / service manipulation
-    'kill ', 'killall', 'systemctl', 'service ',
+    'kill ', 'killall', 'systemctl',
+    'service start', 'service stop', 'service restart', 'service delete',
     # Command injection via substitution
     '$(', '`',
     # Variable expansion — ${VAR} can exfiltrate env secrets (e.g. ANTHROPIC_API_KEY)

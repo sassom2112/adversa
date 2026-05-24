@@ -56,16 +56,22 @@ def export_patterns(state_path=None,
     if output_path is None:
         output_path = _DEFAULT_OUTPUT
 
-    if not os.path.exists(state_path):
+    sysmon_exists = os.path.exists(state_path)
+    if not sysmon_exists and not disk_state_path:
         print(f"No brain state found at {state_path} — run brain.py first")
         return None
+    if not sysmon_exists:
+        print(f"No Sysmon brain state — exporting disk-domain only")
 
-    with open(state_path) as f:
-        state = json.load(f)
-
-    iteration = state.get('iteration', 0)
-    patterns = state.get('blue_patterns', {})
-    evasions = state.get('red_evasions', {})
+    iteration = 0
+    patterns  = {}
+    evasions  = {}
+    if sysmon_exists:
+        with open(state_path) as f:
+            state    = json.load(f)
+        iteration = state.get('iteration', 0)
+        patterns  = state.get('blue_patterns', {})
+        evasions  = state.get('red_evasions', {})
 
     operational_rules = {}
     skipped = []

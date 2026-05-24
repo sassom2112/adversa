@@ -57,7 +57,7 @@ _INITIAL_PATTERNS: dict[str, dict] = {
     },
     'T1547.001': {
         'name': 'Registry Run Key',
-        'signals': ['currentversion\\run', 'currentversion\\runonce', 'dllhost\\svchost'],
+        'signals': ['currentversion\\run', 'currentversion\\runonce', 'dllhost/svchost'],
         'weight': 45,
     },
     'T1569.002': {
@@ -67,7 +67,7 @@ _INITIAL_PATTERNS: dict[str, dict] = {
     },
     'T1036.005': {
         'name': 'Binary Masquerading',
-        'signals': ['102400', 'dllhost\\svchost.exe', 'upx', 'wrong imports'],
+        'signals': ['102400', 'dllhost/svchost.exe', 'upx', 'wrong imports'],
         'weight': 45,
     },
     'T1087.001': {
@@ -95,7 +95,7 @@ _INITIAL_PATTERNS: dict[str, dict] = {
 # Signals that survive pruning regardless of recent firing rate.
 # These are technique-invariant disk artifacts with no benign overlap.
 _PROTECTED = frozenset({
-    'mimikatz', 'sekurlsa', 'psexesvc', 'remcomsvc', 'dllhost\\svchost',
+    'mimikatz', 'sekurlsa', 'psexesvc', 'remcomsvc', 'dllhost/svchost',
     'enumdomainusers', 'fodhelper', 'frombase64string',
 })
 
@@ -120,7 +120,7 @@ class ForensicBlueAgent:
         Returns (score, matched_dict, reasons).
         artifact is a multi-line SIFT-format string.
         """
-        text = artifact.lower().replace('\\\\', '\\')
+        text = artifact.lower().replace('\\', '/')
 
         if 'anthropic_api_key' in text:
             return 0, {}, []
@@ -132,14 +132,14 @@ class ForensicBlueAgent:
         for tid, data in self.patterns.items():
             hits = [
                 s for s in data['signals']
-                if s.lower().replace('\\\\', '\\') in text
+                if s.lower().replace('\\', '/') in text
             ]
             if not hits:
                 continue
 
             if len(hits) >= 2:
                 w = data['weight']
-            elif hits[0].lower().replace('\\\\', '\\') in _PROTECTED:
+            elif hits[0].lower().replace('\\', '/') in _PROTECTED:
                 w = data['weight'] // 2
             else:
                 w = 0
@@ -228,10 +228,10 @@ class ForensicBlueAgent:
             tech_hist = [h for h in history if h['technique'] == tid]
             if len(tech_hist) < 15:
                 continue
-            recent_texts = [h['artifact'].lower() for h in tech_hist[-50:]]
+            recent_texts = [h['artifact'].lower().replace('\\', '/') for h in tech_hist[-50:]]
             active = []
             for sig in self.patterns[tid]['signals']:
-                sig_low   = sig.lower().replace('\\\\', '\\')
+                sig_low   = sig.lower().replace('\\', '/')
                 fired     = any(sig_low in t for t in recent_texts)
                 protected = sig_low in _PROTECTED
                 if fired or protected:
@@ -410,7 +410,8 @@ class ForensicBrain:
 
         plt.tight_layout()
         os.makedirs(_REPORTS, exist_ok=True)
-        path = os.path.join(_REPORTS, 'forensic_training_graphs.png')
+        ts   = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        path = os.path.join(_REPORTS, f'forensic_training_graphs_{ts}.png')
         plt.savefig(path, dpi=150, bbox_inches='tight')
         plt.close()
         print(f'\n📊 Graphs saved: {path}')

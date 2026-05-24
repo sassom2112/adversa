@@ -203,45 +203,60 @@ def _coerce_list(val) -> list:
 
 
 def normalize_ha_report(report: dict, technique_id: str) -> dict | None:
-    """Full HA sandbox report → SIFT-format artifact."""
-    strings_raw = (report.get('strings')
-                   or report.get('extracted_strings')
-                   or [])
-    dropped  = _coerce_list(report.get('dropped_files', []))
-    registry = _coerce_list(report.get('registry', []))
-    domains  = _coerce_list(report.get('domains', []))
-    hosts    = _coerce_list(report.get('hosts', []))
-    tags     = _coerce_list(report.get('classification_tags', []))
+    """
+    HA /report/{sha256}/summary → SIFT-format artifact.
 
-    if not (strings_raw or dropped or registry):
+    The summary endpoint returns static analysis metadata only — no dynamic
+    strings/dropped_files/registry.  Actual available fields:
+      submit_name, type, vx_family, verdict, threat_level,
+      extracted_files (list, usually empty for static), domains, hosts,
+      classification_tags, tags, sha256, md5
+    """
+    submit_name = report.get('submit_name', '')
+    pe_type     = report.get('type', '')
+    vx_family   = report.get('vx_family', '')
+    verdict     = report.get('verdict', '')
+    threat_lvl  = report.get('threat_level', 0)
+    domains     = _coerce_list(report.get('domains', []))
+    hosts       = _coerce_list(report.get('hosts', []))
+    tags        = _coerce_list(report.get('classification_tags', [])
+                               or report.get('tags', []))
+    extracted   = _coerce_list(report.get('extracted_files', []))
+
+    # Need at least a filename or family to build a useful artifact
+    if not submit_name and not vx_family:
         return None
 
     parts = []
 
-    usable = [s for s in strings_raw
-              if isinstance(s, str) and 4 <= len(s) <= 120
-              and any(c.isalpha() for c in s)
-              and not s.startswith('http')]
-    if usable:
-        parts.append('STRINGS: ' + ' | '.join(usable[:25]))
+    if submit_name:
+        size = report.get('size', 0)
+        parts.append(f'FLS: {submit_name} (size {size})')
 
-    for f in dropped[:10]:
+    # Build STRINGS from available static metadata
+    tokens = []
+    if vx_family:
+        tokens.append(vx_family.lower())
+    if pe_type:
+        # e.g. "PE32 executable for MS Windows 6.01 (GUI), Intel i386, 10 sections"
+        tokens.append(pe_type[:80])
+    if verdict and verdict != 'no specific threat':
+        tokens.append(verdict)
+    if tags:
+        tokens.extend(str(t).lower() for t in tags[:4])
+    if tokens:
+        parts.append('STRINGS: ' + ' | '.join(tokens))
+
+    for f in extracted[:5]:
         name = f.get('name') or f.get('filename') or ''
-        sha  = f.get('sha256') or f.get('md5') or ''
         if name:
-            parts.append(f'FLS: {name} sha256={sha[:12]}')
-
-    for reg in registry[:8]:
-        key = reg.get('key') or reg.get('registry_key') or ''
-        val = reg.get('value') or reg.get('data') or ''
-        op  = (reg.get('operation') or reg.get('type') or 'set').upper()
-        if key:
-            parts.append(f'REG {op}: {key} = {str(val)[:80]}')
+            parts.append(f'FLS: {name}')
 
     if domains or hosts:
         parts.append('NETWORK: ' + ' '.join(str(h) for h in (domains + hosts)[:5]))
-    if tags:
-        parts.append('TAGS: ' + ' '.join(str(t) for t in tags[:6]))
+
+    if threat_lvl:
+        parts.append(f'THREAT_LEVEL: {threat_lvl}')
 
     if len(parts) < 2:
         return None
@@ -392,6 +407,48 @@ def load_records(tid: str) -> list:
     return records
 
 
+def reprocess_cache(api_key: str = ''):
+    """
+    Re-normalize all cached HA reports using the current normalize_ha_report().
+    Run this after updating the normalizer to extract value from already-cached reports
+    without burning API quota.
+    """
+    if not os.path.isdir(_CACHE_DIR):
+        print('No cache directory found.')
+        return
+    files = [f for f in os.listdir(_CACHE_DIR) if f.endswith('.json')]
+    print(f'Reprocessing {len(files)} cached HA reports...')
+    by_tid: dict = {}
+    for fname in files:
+        path = os.path.join(_CACHE_DIR, fname)
+        with open(path) as f:
+            report = json.load(f)
+        # We don't know which technique this SHA belongs to — use vx_family hint
+        # or skip; the per-technique fetch pipeline will re-match on next run
+        sha    = report.get('sha256', fname.replace('.json', ''))
+        family = (report.get('vx_family') or '').lower()
+        tid    = None
+        for t, cfg in TECHNIQUE_SEARCHES.items():
+            for fam in cfg['mb_families']:
+                if fam.lower() in family or family in fam.lower():
+                    tid = t
+                    break
+            if tid:
+                break
+        if not tid:
+            continue
+        rec = normalize_ha_report(report, tid)
+        if rec:
+            by_tid.setdefault(tid, []).append(rec)
+
+    total = 0
+    for tid, records in by_tid.items():
+        path = save_records(tid, records)
+        print(f'  {tid}: {len(records)} records added → {os.path.relpath(path)}')
+        total += len(records)
+    print(f'Done — {total} records extracted from cache.')
+
+
 def print_stats():
     print('\nForensic Dataset Statistics')
     print('=' * 56)
@@ -428,8 +485,10 @@ def main():
     parser.add_argument('--technique',   metavar='TID')
     parser.add_argument('--max-samples', type=int, default=20)
     parser.add_argument('--stats',       action='store_true')
-    parser.add_argument('--test-ha',     action='store_true',
+    parser.add_argument('--test-ha',        action='store_true',
                         help='Test whether HA report endpoint works with your key')
+    parser.add_argument('--reprocess-cache', action='store_true',
+                        help='Re-normalize cached HA reports with current normalizer')
     args = parser.parse_args()
 
     global _mb_api_key
@@ -447,6 +506,11 @@ def main():
             sys.exit(1)
         ok = test_ha(api_key)
         sys.exit(0 if ok else 1)
+
+    if args.reprocess_cache:
+        reprocess_cache(api_key)
+        print_stats()
+        return
 
     if args.stats or not args.fetch:
         print_stats()

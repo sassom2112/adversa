@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 compute_weights.py — Compute calibrated signal weights for ADVERSA's scoring engine.
 
@@ -30,6 +31,27 @@ from pathlib import Path
 _HERE      = os.path.dirname(os.path.abspath(__file__))
 _CORPUS    = os.path.normpath(os.path.join(_HERE, '..', 'data', 'corpus'))
 _OUT_PATH  = os.path.normpath(os.path.join(_HERE, '..', 'data', 'calibrated_weights.json'))
+
+# AV classification metadata labels — these come from MB/HA vx_family and tag strings,
+# NOT from forensic disk artifacts. They appear across all technique corpora equally
+# and will cause false positives if used as signals. Always filter them out.
+_AV_NOISE: frozenset = frozenset({
+    # Generic AV verdicts
+    'generic', 'generics', 'trojan', 'malware', 'virus', 'suspicious',
+    'adware', 'riskware', 'hacktool', 'unwanted', 'potentially',
+    # Confidence/scoring metadata from HA reports
+    'bounty', 'confidence', 'signed', 'unsigned', 'unknown',
+    # AV vendor name fragments appearing in vx_family strings
+    'marte', 'securiteinfo', 'win/malicious', 'dump:generic',
+    # Generic structural tokens with no forensic meaning
+    'application', 'payload', 'shell', 'setup', 'agent',
+    # Percentage/scoring artifacts
+    '100%',
+})
+
+# Version number pattern — BloodHound and other tools submit release filenames
+import re as _re
+_VERSION_RE = _re.compile(r'^v\d+\.\d+')
 
 # Strings that appear in virtually every Windows disk image — always benign baseline
 _BENIGN_STRINGS: list[str] = [
@@ -115,6 +137,22 @@ def _build_benign_freq() -> dict[str, float]:
     return freq
 
 
+def _is_noise(token: str) -> bool:
+    """Return True for AV metadata artifacts that aren't forensic disk signals."""
+    t = token.lower().strip()
+    if t in _AV_NOISE:
+        return True
+    if _VERSION_RE.match(t):  # v2.6.0, v2.10.0-rc1, etc.
+        return True
+    # IP-like strings that are specific IOCs (not noise) — keep them
+    if _re.match(r'^\d+\.\d+\.\d+\.\d+$', t):
+        return False
+    # Pure numeric or single char
+    if t.isdigit() or len(t) < 3:
+        return True
+    return False
+
+
 def compute_signal_weights(
     corpus: dict[str, dict],
     min_samples: int,
@@ -130,6 +168,17 @@ def compute_signal_weights(
 
     all_tids = set(_TECHNIQUE_META.keys()) | set(corpus.keys())
 
+    # Identify cross-technique tokens — tokens that appear as corpus signals
+    # in 4+ techniques are not technique-specific and should be capped.
+    token_technique_count: dict[str, int] = {}
+    for tid in all_tids:
+        for tok in corpus.get(tid, {}).get('signal_tokens', []):
+            if not _is_noise(tok):
+                token_technique_count[tok] = token_technique_count.get(tok, 0) + 1
+    cross_technique = {t for t, c in token_technique_count.items() if c >= 4}
+    if cross_technique:
+        print(f"  Cross-technique tokens (capped at 0.2): {sorted(cross_technique)[:10]}")
+
     for tid in sorted(all_tids):
         meta    = _TECHNIQUE_META.get(tid, {'name': tid, 'base_weight': 35})
         samples = corpus.get(tid, {}).get('samples', [])
@@ -142,14 +191,15 @@ def compute_signal_weights(
             'signals': {},
         }
 
-        # Collect candidate signals: base signals + corpus tokens
+        # Collect candidate signals: base signals + corpus tokens (noise filtered)
         candidates: set[str] = set()
         for sig in _BASE_SIGNALS.get(tid, []):
             candidates.add(sig.lower())
 
         corpus_tokens = corpus.get(tid, {}).get('signal_tokens', [])
         for tok in corpus_tokens[:50]:  # top-50 corpus tokens
-            candidates.add(tok.lower())
+            if not _is_noise(tok):
+                candidates.add(tok.lower())
 
         if verbose:
             print(f"\n  {tid} ({n} samples):")
@@ -183,8 +233,16 @@ def compute_signal_weights(
             # Normalize: log_odds ≈ 0 → weight 0; log_odds ≥ 4 → weight 1.0
             weight = max(0.0, min(1.0, log_odds / 4.0))
 
+            # Cross-technique tokens are not discriminative — cap at 0.2,
+            # UNLESS this signal is part of (or a component of) a base signal
+            # for this specific technique (e.g. "powershell" for T1059.001).
+            base_sigs_lower = [s.lower() for s in _BASE_SIGNALS.get(tid, [])]
+            is_base_related = any(sig in b or b in sig for b in base_sigs_lower)
+            if sig in cross_technique and not is_base_related:
+                weight = min(weight, 0.2)
+
             # Baseline signals from known cases always get at least 0.5
-            if sig in [s.lower() for s in _BASE_SIGNALS.get(tid, [])]:
+            if sig in base_sigs_lower:
                 weight = max(weight, 0.5)
 
             entry['signals'][sig] = round(weight, 3)

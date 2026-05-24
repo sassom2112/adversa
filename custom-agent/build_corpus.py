@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 build_corpus.py — Collect labeled malware samples from MalwareBazaar + HybridAnalysis
 and build a signal corpus for compute_weights.py to calibrate ADVERSA's scoring engine.
@@ -34,7 +35,7 @@ except ImportError:
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _CORPUS  = os.path.normpath(os.path.join(_HERE, '..', 'data', 'corpus'))
 _MB_URL  = 'https://mb-api.abuse.ch/api/v1/'
-_HA_URL  = 'https://www.hybrid-analysis.com/api/v2'
+_HA_URL  = 'https://hybrid-analysis.com/api/v2'
 
 # Map MB tags / malware family substrings → MITRE technique
 # Multiple tags can map to the same technique; a sample maps to the first match.
@@ -128,14 +129,13 @@ def _extract_tokens(s: str) -> list[str]:
     return tokens
 
 
-def mb_query_tag(tag: str, limit: int, session: requests.Session) -> list[dict]:
+def mb_query_tag(tag: str, limit: int, session: requests.Session,
+                 mb_key: str = '') -> list[dict]:
     """Query MalwareBazaar for samples with a given tag."""
     try:
-        resp = session.post(
-            _MB_URL,
-            data={'query': 'get_taginfo', 'tag': tag, 'limit': limit},
-            timeout=30,
-        )
+        data: dict = {'query': 'get_taginfo', 'tag': tag, 'limit': limit}
+        headers = {'Auth-Key': mb_key} if mb_key else {}
+        resp = session.post(_MB_URL, data=data, headers=headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         if data.get('query_status') != 'ok':
@@ -166,7 +166,8 @@ def ha_summary(sha256: str, api_key: str, session: requests.Session) -> dict | N
         return None
 
 
-def collect(techniques: list[str] | None, limit_per_tag: int, ha_key: str) -> dict:
+def collect(techniques: list[str] | None, limit_per_tag: int,
+            mb_key: str, ha_key: str) -> dict:
     """
     Build corpus dict: {technique: {samples: [...], signal_tokens: [...]}}
     """
@@ -182,7 +183,7 @@ def collect(techniques: list[str] | None, limit_per_tag: int, ha_key: str) -> di
 
     for tag, tid in target_tags:
         print(f"\n  [{tid}] Querying MB tag: {tag}")
-        samples_raw = mb_query_tag(tag, limit_per_tag, session)
+        samples_raw = mb_query_tag(tag, limit_per_tag, session, mb_key)
         print(f"    → {len(samples_raw)} samples returned")
 
         for raw in samples_raw:
@@ -293,9 +294,14 @@ def main():
                         help='Skip HybridAnalysis enrichment (MB only)')
     args = parser.parse_args()
 
-    mb_key = os.environ.get('MB_API_KEY', '')   # MB is public; key not required
+    mb_key = os.environ.get('MB_API_KEY', '')
     ha_key = '' if args.no_ha else os.environ.get('HA_API_KEY', '')
 
+    if not mb_key:
+        print("ERROR: MB_API_KEY not set.")
+        print("  Register free at https://bazaar.abuse.ch/ → profile → API key")
+        print("  Then: export MB_API_KEY=<your-key>")
+        sys.exit(1)
     if not ha_key and not args.no_ha:
         print("ℹ️  HA_API_KEY not set — HybridAnalysis enrichment skipped")
         print("   Set HA_API_KEY or pass --no-ha to suppress this message")
@@ -308,6 +314,7 @@ def main():
     corpus = collect(
         techniques=args.technique,
         limit_per_tag=args.limit,
+        mb_key=mb_key,
         ha_key=ha_key,
     )
 

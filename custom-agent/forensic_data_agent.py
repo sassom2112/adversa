@@ -29,7 +29,7 @@ _FORENSIC_DS  = os.path.join(_PROJECT_ROOT, 'datasets', 'forensic')
 _CACHE_DIR    = os.path.join(_FORENSIC_DS, '.cache')
 
 HA_BASE       = 'https://www.hybrid-analysis.com/api/v2'
-_MIN_INTERVAL = 13.0   # 5 req/min free tier → 12s + 1s buffer
+_MIN_INTERVAL = 0.4    # stay under 200 req/min limit (150/min effective)
 
 # MITRE technique → Hybrid Analysis search configuration
 TECHNIQUE_SEARCHES = {
@@ -335,7 +335,7 @@ def main():
     client = HybridAnalysisClient(api_key)
 
     print(f'\nFetching {len(techniques)} technique(s) — {args.max_samples} samples max each')
-    print(f'Rate limit: {60 / _MIN_INTERVAL:.0f} req/min (free tier: 50 req/day)')
+    print(f'Rate limit: ~{60 / _MIN_INTERVAL:.0f} req/min (quota: 200/min, 2000/hr)')
 
     for tid in techniques:
         records = fetch_technique(client, tid, TECHNIQUE_SEARCHES[tid], args.max_samples)

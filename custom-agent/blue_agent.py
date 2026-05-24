@@ -59,18 +59,31 @@ def _audit(tool_name, command, result_snippet, usage=None):
 
 def _extract_pass2_techniques(client, analysis_text: str) -> dict:
     """
-    Ask a fast LLM to extract ATT&CK technique IDs and artifact signals from
-    the Pass 2 prose analysis. Returns {technique_id: [signal_strings]}.
-    Only techniques not already in the scored hits should be fed to the Auditor.
+    Extract ATT&CK technique IDs from Pass 2 prose analysis.
+    Returns {technique_id: [signal_strings]}.
+
+    Two-stage: regex harvest (never fails) + LLM for richer signal extraction.
+    LLM failure falls back to regex harvest so no technique is silently dropped.
     """
     if not analysis_text.strip():
         return {}
 
+    # Stage 1 — direct regex harvest: any T####.### or T#### in the prose
+    regex_hits: dict = {}
+    for m in re.finditer(r'\b(T\d{4}(?:\.\d{3})?)\b', analysis_text):
+        tid = m.group(1)
+        if tid not in regex_hits:
+            start   = max(0, m.start() - 80)
+            end     = min(len(analysis_text), m.end() + 160)
+            context = analysis_text[start:end].strip().replace('\n', ' ')
+            regex_hits[tid] = [context[:100]]
+
+    # Stage 2 — LLM extraction for structured signals
     prompt = (
         "You are a forensic analyst. Extract every distinct ATT&CK technique "
         "mentioned in the forensic analysis below. For each technique, list the "
         "key artifact names or strings (filenames, hashes, account names, IPs, "
-        "registry values) that were found on disk as evidence.\n\n"
+        "registry values) that were found as evidence.\n\n"
         "Return ONLY a valid JSON array. No prose, no markdown, no explanation.\n"
         "Format: [{\"id\": \"T1136\", \"name\": \"Create Account\", "
         "\"signals\": [\"vibranium\", \"SAM hive\"]}]\n\n"
@@ -83,15 +96,20 @@ def _extract_pass2_techniques(client, analysis_text: str) -> dict:
             messages=[{'role': 'user', 'content': prompt}],
         )
         raw = resp.content[0].text.strip()
-        # Strip markdown fences if present
         if raw.startswith('```'):
             raw = '\n'.join(raw.split('\n')[1:])
             raw = raw.rsplit('```', 1)[0].strip()
         techniques = json.loads(raw)
-        return {t['id']: t.get('signals', []) for t in techniques if 'id' in t}
+        llm_hits = {t['id']: t.get('signals', []) for t in techniques if 'id' in t}
+        # Merge: LLM takes precedence; regex fills any gaps LLM missed
+        for tid, sigs in regex_hits.items():
+            if tid not in llm_hits:
+                llm_hits[tid] = sigs
+        return llm_hits
     except Exception as exc:
-        print(f"  [P2-extract] failed: {exc}")
-        return {}
+        print(f"  [P2-extract] LLM failed ({exc}) — using regex harvest "
+              f"({len(regex_hits)} techniques)")
+        return regex_hits
 
 
 def _checkpoint(tool_call_count, pass1_hits, tool_outputs, rules):
@@ -489,6 +507,14 @@ For every suspicious account found: grep event logs for EventID 4624 with that u
 For every .dmp file: strings on it, check path and creation timestamp.
 For every service flagged: rip.pl -r SYSTEM -f services to get full service entry.
 
+WINDOWS EVENT LOG PARSING (.evtx / .Evt) — use EvtxECmd (in allowlist):
+  dotnet /opt/zimmermantools/EvtxeCmd/EvtxECmd.dll \
+    -f '<evtx_path>' --csv /tmp/evtx_out --csvf evtx.csv 2>/dev/null
+  grep -iE '7045|4624|4625|4688|4720|4776' /tmp/evtx_out/evtx.csv | head -40
+Do NOT use evtxexport (not in allowlist) or python3 -c inline code (blocked).
+Key Event IDs: 7045=service install, 4624=successful logon, 4625=failed logon,
+  4688=process create, 4720=account created, 4776=credential validation.\
+
 Call run_terminal_command with real SIFT CLI commands. Do NOT repeat Pass 1 commands.
 
 FINAL ASSESSMENT — use structured markdown with these two required sections:
@@ -670,10 +696,11 @@ Never list a technique without citing the raw evidence that supports it. No spec
                                 f"You have {remaining} tool calls remaining. "
                                 f"Do not stop investigating — the following domains "
                                 f"have not yet been covered:\n"
-                                f"• Event log content: parse .evtx files; look for "
-                                f"EventID 4624 (logon), 4625 (failed logon), "
-                                f"7045 (service install), 4720 (account created), "
-                                f"4776 (credential validation)\n"
+                                f"• Event log content (.evtx): use EvtxECmd — "
+                                f"dotnet /opt/zimmermantools/EvtxeCmd/EvtxECmd.dll "
+                                f"-f '<evtx_path>' --csv /tmp/evtx_out --csvf evtx.csv 2>/dev/null "
+                                f"then grep -iE '7045|4624|4625|4688|4720' /tmp/evtx_out/evtx.csv | head -40 "
+                                f"(do NOT use evtxexport — not in allowlist)\n"
                                 f"• Prefetch binary parsing: strings on individual .pf "
                                 f"files for last-run timestamps of every suspicious exe\n"
                                 f"• SAM/SECURITY hive: rip.pl -r SAM -f samparse; "

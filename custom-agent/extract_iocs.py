@@ -24,19 +24,28 @@ _HERE    = os.path.dirname(os.path.abspath(__file__))
 _REPORTS = os.path.normpath(os.path.join(_HERE, '..', 'reports'))
 
 # Regex patterns for artifact extraction
-_IP_RE       = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
-_FNAME_RE    = re.compile(
+_IP_RE    = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
+_FNAME_RE = re.compile(
     r'(?:^|[\s/\\])([A-Za-z0-9_\-]+\.(?:exe|dll|bin|dmp|ps1|vbs|bat|cmd|rar|zip|7z))\b',
     re.IGNORECASE,
 )
-_REGVAL_RE   = re.compile(
-    r'(?:CurrentVersion\\Run|RunOnce|Winlogon|AppInit)[^\n]*?[:=]\s*([^\n]{3,80})',
-    re.IGNORECASE,
-)
-_ACCOUNT_RE  = re.compile(
-    r'(?:user|account|profile)[:\s]+([A-Za-z][A-Za-z0-9_\-.]{2,19})\b',
-    re.IGNORECASE,
-)
+
+# Patterns that signal an account name in prose or tool output
+_ACCOUNT_PATTERNS = [
+    re.compile(r'(?:username|user name|account name|account)[:\s]+([A-Za-z][A-Za-z0-9_\-.]{1,29})', re.I),
+    re.compile(r'(?:Users|Profiles)[/\\]([A-Za-z][A-Za-z0-9_\-.]{1,29})', re.I),
+    re.compile(r'(?:logged on as|running as|context)[:\s]+([A-Za-z][A-Za-z0-9_\-.]{1,29})', re.I),
+    re.compile(r'RID[:\s]+\d+.*?(?:username|name)[:\s]+([A-Za-z][A-Za-z0-9_\-.]{1,29})', re.I),
+]
+_ACCOUNT_BORING = frozenset({
+    'system', 'administrator', 'admin', 'network', 'local', 'service',
+    'domain', 'user', 'account', 'default', 'guest', 'public', 'users',
+    'everyone', 'interactive', 'authenticated', 'creator', 'owner',
+})
+
+# Techniques associated with account discovery / creation
+_ACCOUNT_TECHNIQUES = frozenset({'T1087', 'T1087.001', 'T1087.002',
+                                  'T1136', 'T1136.001', 'T1078', 'T1078.002'})
 
 # IPs that are never IOCs
 _BORING_PREFIXES = ('127.', '0.', '255.', '169.254.', '10.', '192.168.', '172.')
@@ -57,17 +66,29 @@ def _extract_from_text(text: str, iocs: dict) -> None:
 
     for m in _FNAME_RE.finditer(text):
         fname = m.group(1).lower()
-        # Skip obvious system / installer filenames
         if fname not in iocs['filenames'] and not any(
             fname.startswith(p) for p in ('setup', 'install', 'update', 'msi')
         ):
             iocs['filenames'].append(fname)
 
 
+def _extract_accounts_from_text(text: str, iocs: dict) -> None:
+    """Extract account names from investigation prose or tool output."""
+    for pat in _ACCOUNT_PATTERNS:
+        for m in pat.finditer(text):
+            name = m.group(1).strip()
+            if (name.lower() not in _ACCOUNT_BORING
+                    and len(name) >= 2
+                    and name not in iocs['accounts']):
+                iocs['accounts'].append(name)
+
+
 def extract_iocs(host: str, reports_dir: str) -> dict:
     """
     Build an IOC dict from a completed investigation.
-    Only includes artifacts from CONFIRMED techniques.
+    CONFIRMED findings are extracted as definite IOCs.
+    INCONCLUSIVE findings from account/C2 techniques are extracted as candidates
+    (tagged tier='candidate') so campaign mode still propagates them.
     """
     iocs: dict = {
         'source_host':   host,
@@ -80,6 +101,7 @@ def extract_iocs(host: str, reports_dir: str) -> dict:
 
     triage_path = os.path.join(reports_dir, f'{host}-custom-agent-report.json')
     audit_path  = os.path.join(reports_dir, f'{host}-auditor-transcript.json')
+    memory_path = os.path.join(reports_dir, f'{host}-memory-triage-report.json')
 
     if not os.path.exists(triage_path):
         print(f"  ERROR: triage report not found: {triage_path}")
@@ -88,30 +110,40 @@ def extract_iocs(host: str, reports_dir: str) -> dict:
     with open(triage_path) as f:
         triage = json.load(f)
 
-    # Signals that matched in triage (only from confirmed techniques if audit exists)
-    confirmed_ids: set[str] = set()
+    confirmed_ids:    set[str] = set()
+    inconclusive_ids: set[str] = set()
 
     if os.path.exists(audit_path):
         with open(audit_path) as f:
             audit = json.load(f)
-        confirmed_ids = {
-            e['finding_id']
-            for e in audit.get('transcript', [])
-            if e.get('final_verdict') == 'CONFIRMED'
-        }
-        # Mine tool output from confirmed findings
+
+        for e in audit.get('transcript', []):
+            verdict = e.get('final_verdict')
+            tid     = e.get('finding_id', '')
+            if verdict == 'CONFIRMED':
+                confirmed_ids.add(tid)
+            elif verdict == 'INCONCLUSIVE':
+                inconclusive_ids.add(tid)
+
+        # Mine tool output from all auditor challenges (confirmed + inconclusive)
         for entry in audit.get('transcript', []):
-            if entry.get('final_verdict') != 'CONFIRMED':
-                continue
+            verdict = entry.get('final_verdict')
             for ch in entry.get('challenges', []):
-                _extract_from_text(ch.get('tool_output_preview', ''), iocs)
-                _extract_from_text(ch.get('reasoning', ''), iocs)
+                # 'tool_output' is the correct field name in the transcript
+                text = ch.get('tool_output', '') + ' ' + ch.get('reasoning', '')
+                if verdict == 'CONFIRMED':
+                    _extract_from_text(text, iocs)
+                    _extract_accounts_from_text(text, iocs)
+                elif verdict == 'INCONCLUSIVE':
+                    # Still harvest IPs and accounts as candidates
+                    _extract_from_text(text, iocs)
+                    _extract_accounts_from_text(text, iocs)
     else:
-        # No audit — use all triage findings
         confirmed_ids = set(triage.get('techniques_detected', []))
 
-    # Signals from confirmed techniques
     matched = triage.get('matched_signals', {})
+
+    # Confirmed signals → definite IOCs
     for tid in confirmed_ids:
         for sig in matched.get(tid, []):
             if re.match(r'\d+\.\d+\.\d+\.\d+', sig) and _is_routable(sig):
@@ -124,8 +156,38 @@ def extract_iocs(host: str, reports_dir: str) -> dict:
             elif '\\' in sig and sig not in iocs['registry_keys']:
                 iocs['registry_keys'].append(sig)
 
-    # Analysis text (file paths, IPs mentioned by the agent)
-    _extract_from_text(triage.get('claude_analysis', ''), iocs)
+    # Inconclusive signals for account/C2 techniques → candidate IOCs
+    # (vibranium in T1087.001 inconclusive, C2 IP in T1071.001 inconclusive, etc.)
+    for tid in inconclusive_ids:
+        for sig in matched.get(tid, []):
+            if tid in _ACCOUNT_TECHNIQUES:
+                # Simple alphanumeric signal in an account technique = likely username
+                if (re.match(r'^[A-Za-z][A-Za-z0-9_\-.]{1,29}$', sig)
+                        and sig.lower() not in _ACCOUNT_BORING
+                        and sig not in iocs['accounts']):
+                    iocs['accounts'].append(sig)
+            if re.match(r'\d+\.\d+\.\d+\.\d+', sig) and _is_routable(sig):
+                if sig not in iocs['c2_ips']:
+                    iocs['c2_ips'].append(sig)
+
+    # Prose analysis — IPs, filenames, and account names mentioned by the agent
+    analysis = triage.get('claude_analysis', '')
+    _extract_from_text(analysis, iocs)
+    _extract_accounts_from_text(analysis, iocs)
+
+    # Memory triage report — same harvest on memory analysis prose
+    if os.path.exists(memory_path):
+        with open(memory_path) as f:
+            mem = json.load(f)
+        mem_text = mem.get('memory_analysis', '')
+        _extract_from_text(mem_text, iocs)
+        _extract_accounts_from_text(mem_text, iocs)
+        # Memory matched signals
+        for tid, sigs in mem.get('matched_signals', {}).items():
+            for sig in sigs:
+                if re.match(r'\d+\.\d+\.\d+\.\d+', sig) and _is_routable(sig):
+                    if sig not in iocs['c2_ips']:
+                        iocs['c2_ips'].append(sig)
 
     # Deduplicate and sort
     for key in ('c2_ips', 'filenames', 'registry_keys', 'directories', 'accounts'):

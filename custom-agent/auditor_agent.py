@@ -77,6 +77,22 @@ Rules:
    Reference the Attack Chain step number (e.g. "Step 3") when your finding
    confirms or refutes a specific row in the Triage Agent's Attack Chain table.
 7. Write in plain prose. One short paragraph per verdict. No extra headers.
+
+KNOWN FORENSIC / IR TOOLS — do not attribute to attacker without corroborating evidence:
+  Acquisition: Mnemosyne, FResponse, WinPmem, DumpIt, Magnet RAM Capture, avml, osxpmem
+  Collection:  KAPE, Velociraptor, GRR, Redline, HBGary Responder, FTK Imager
+  Memory:      Volatility, Rekall, LiME, WinPmem
+  Network:     NetworkMiner, tshark (collection mode)
+
+When EventID 7045 (service install) or a kernel driver involves one of these tools:
+  - Check the install timestamp against the investigation timeline. Multiple installs
+    on consecutive IR-response days = IR team rotation, not attacker persistence.
+  - REFUTE if no attacker TTPs exist alongside (no C2 beacon, no lateral movement,
+    no wrong user context at the same timestamp).
+  - CONFIRM only when the tool is used outside IR context — wrong user, paired with
+    C2, or performing clearly attacker-style actions.
+This applies equally to disk persistence (T1547.008, T1569.002) and memory-resident
+drivers found via vol.py svcscan — IR tools appear in both domains.
 """
 
 _TECHNIQUE_NAMES = {
@@ -126,12 +142,13 @@ class ForensicAuditor:
             transcript (list[dict]) — full argumentation log (input order)
             adjusted_score (int)    — sum of confirmed technique weights
         """
-        host             = os.path.basename(target_path.rstrip('/'))
-        triage_score     = triage_report.get('confidence_score', 0)
-        techniques       = triage_report.get('techniques_detected', [])
-        matched_sigs     = triage_report.get('matched_signals', {})
+        host              = os.path.basename(target_path.rstrip('/'))
+        triage_score      = triage_report.get('confidence_score', 0)
+        techniques        = triage_report.get('techniques_detected', [])
+        matched_sigs      = triage_report.get('matched_signals', {})
         technique_sources = triage_report.get('technique_sources', {})
-        rules            = self._load_rules()
+        pass2_log         = triage_report.get('pass2_tool_log', [])
+        rules             = self._load_rules()
 
         print(f"\n{'═'*60}")
         print(f"  FORENSIC AUDITOR  —  {target_path}")
@@ -154,6 +171,9 @@ class ForensicAuditor:
                 print_lock,
                 source=technique_sources.get(finding_id, 'disk'),
                 memory_path=memory_path,
+                pass2_evidence=self._relevant_pass2_evidence(
+                    pass2_log, matched_sigs.get(finding_id, [])
+                ),
             )
             for finding_id in techniques
         ])
@@ -204,6 +224,25 @@ class ForensicAuditor:
 
         return confirmed, inconclusive, refuted, transcript, adjusted_score
 
+    # ── Helpers ────────────────────────────────────────────────────────────
+
+    def _relevant_pass2_evidence(self, pass2_log: list, signals: list) -> list:
+        """
+        Return Pass 2 tool log entries whose output contains any matched signal.
+        Passed to the Auditor so it verifies a specific known artifact rather
+        than rediscovering from scratch.
+        """
+        hits = []
+        for entry in pass2_log:
+            output = entry.get('output', '').lower()
+            if any(s.lower().replace('\\\\', '\\') in output for s in signals):
+                hits.append({
+                    'call':    entry.get('call_num', '?'),
+                    'cmd':     entry.get('cmd', ''),
+                    'snippet': entry.get('output', '')[:500],
+                })
+        return hits[:3]  # cap at 3 to keep prompt concise
+
     # ── Per-finding coroutine (one MCP session each) ──────────────────────
 
     async def _audit_finding(
@@ -215,6 +254,7 @@ class ForensicAuditor:
         print_lock: asyncio.Lock,
         source: str = 'disk',
         memory_path: str = None,
+        pass2_evidence: list = None,
     ) -> dict:
         """
         Audit a single finding with its own MCP session.
@@ -256,6 +296,7 @@ class ForensicAuditor:
                             signal_tier=signal_tier,
                             source=source,
                             memory_path=memory_path,
+                            pass2_evidence=pass2_evidence or [],
                         )
 
                     challenge_history.append({
@@ -323,6 +364,7 @@ class ForensicAuditor:
         signal_tier: str = 'mixed',
         source: str = 'disk',
         memory_path: str = None,
+        pass2_evidence: list = None,
     ) -> tuple:
         """
         One bounded challenge round (≤ MAX_TOOLS_PER_CHALLENGE tool calls).
@@ -381,6 +423,20 @@ class ForensicAuditor:
                 f"Verify using SIFT commands on the mounted image at {target_path}."
             )
 
+        # Evidence the Triage Pass 2 agent already collected for this technique.
+        # Show it so the Auditor verifies the specific known artifact rather than
+        # rediscovering from scratch with a less targeted command.
+        if pass2_evidence:
+            p2_block = "\n\nTriage Pass 2 already found this evidence:\n"
+            for e in pass2_evidence:
+                p2_block += (
+                    f"  [Call {e['call']}] {e['cmd']}\n"
+                    f"  Output: {e['snippet'][:300]}\n"
+                )
+            p2_block += "\nVerify this specific artifact exists. Use the same or a more targeted command."
+        else:
+            p2_block = ""
+
         messages = [{
             'role': 'user',
             'content': (
@@ -389,7 +445,8 @@ class ForensicAuditor:
                 f"Source: {source}\n"
                 f"Triage matched signals: {triage_signals}\n"
                 f"Signal tier: {signal_tier}. {tier_guidance}\n"
-                f"{source_guidance}\n"
+                f"{source_guidance}"
+                f"{p2_block}\n"
                 f"Prior challenge rounds:\n{prior_summary}\n\n"
                 f"Challenge this finding with run_terminal_command. "
                 f"Use vol.py for memory artifacts, SIFT commands for disk artifacts. "

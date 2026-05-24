@@ -296,13 +296,10 @@ class ForensicBrain:
             }
             self.history.append(record)
 
-            # ── METRICS ─────────────────────────────────────────
+            # ── METRICS (pre-learning snapshot) ─────────────────
             self.metrics['iterations'].append(self.iteration)
             self.metrics['blue_scores'].append(score)
             self.metrics['detection_flags'].append(1 if detected else 0)
-            self.metrics['red_generations'].append(
-                len(self.red.evasions.get(tid, []))
-            )
             self.metrics['blue_pattern_counts'].append(
                 sum(len(d['signals']) for d in self.blue.patterns.values())
             )
@@ -317,12 +314,24 @@ class ForensicBrain:
                         for sig in sigs:
                             if sig.lower() not in _PROTECTED:
                                 old = self.blue.patterns[ftid]['weight']
-                                self.blue.patterns[ftid]['weight'] = max(old - 3, 28)
+                                # Floor at 40 so penalized signals stay at detection threshold
+                                self.blue.patterns[ftid]['weight'] = max(old - 3, 40)
             elif detected:
                 caught = [s for sigs in matched.values() for s in sigs]
+                pre_count = len(self.red.evasions.get(tid, []))
                 self.red.evolve(tid, caught)
+                post_count = len(self.red.evasions.get(tid, []))
+                if post_count > pre_count:
+                    print(f'   🔴 Red evolved {post_count - pre_count} new evasion(s) for {tid}')
+                else:
+                    print(f'   ⚠️  Red evolve() produced no new evasions for {tid}')
             else:
                 self.blue.learn(tid, artifact, self.red.last_raw_event)
+
+            # Record red_generations AFTER evolve so graph shows actual evolution
+            self.metrics['red_generations'].append(
+                len(self.red.evasions.get(tid, []))
+            )
 
             if self.iteration % 5 == 0:
                 self.blue.tune_weights(self.history)

@@ -27,6 +27,14 @@ from datetime import datetime, timezone
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _REPORTS = os.path.normpath(os.path.join(_HERE, '..', 'reports'))
 
+# ADVERSA case_io — writes auditor findings as DRAFT for human approval
+sys.path.insert(0, os.path.normpath(os.path.join(_HERE, '..', 'src')))
+try:
+    from adversa.case_io import init_case, write_findings_from_audit, get_examiner
+    _CASE_IO_AVAILABLE = True
+except ImportError:
+    _CASE_IO_AVAILABLE = False
+
 # Import agents from the same directory
 sys.path.insert(0, _HERE)
 import blue_agent
@@ -254,6 +262,19 @@ async def run_investigation(target_path: str, no_synthesis: bool = False,
     }
 
     unified_path = _save_unified(host, unified)
+
+    # Write findings to case directory as DRAFT — require `adversa approve` to sign
+    if _CASE_IO_AVAILABLE:
+        examiner  = get_examiner()
+        case_dir  = init_case(host)
+        write_findings_from_audit(
+            case_dir, host,
+            confirmed, inconclusive, refuted, transcript, examiner,
+        )
+        print(f"\n  Case directory: {case_dir}")
+        print(f"  Findings written as DRAFT — human approval required:")
+        print(f"    adversa review {case_dir}")
+        print(f"    adversa approve {case_dir} <finding_id>")
 
     print(f"\n{'═'*60}")
     print(f"  INVESTIGATION COMPLETE  ({elapsed:.0f}s)")

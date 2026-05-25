@@ -26,7 +26,9 @@ The question we set out to answer: **can we compress Time-to-Understanding from 
 
 The harder question we did not expect to face: **can we prevent the AI itself from manufacturing the findings we asked it to find?**
 
-LLMs hallucinate because they are trained to be helpful. Ask one whether credential dumping occurred on a disk image and it will find something that looks like credential dumping — whether or not the binary is actually on disk. The standard answer is prompt engineering: tell the model to be skeptical. Prompt controls are not security controls. They can be overridden, forgotten, or ignored when the model is confident.
+LLMs hallucinate because they are trained to be helpful. Ask one whether credential dumping occurred on a disk image and it will find something that looks like credential dumping — whether or not the binary is actually on disk. The standard answer is prompt engineering: tell the model to be skeptical.
+
+An LLM-based security agent also faces a direct adversarial threat: an attacker who can write to logs, craft alert metadata, or control filesystem artifacts can influence what the agent sees and concludes. Prompt-level guardrails are the equivalent of a standard classifier without adversarial hardening — they work until the adversary pushes past the margin. The architectural answer at the model level is adversarial training with separation between clean and adversarial loss. The architectural answer at the system level is the same kind of separation: agents that receive findings but not reasoning, auditors that have a mandate to refute rather than confirm, tool servers that validate before any subprocess executes.
 
 ADVERSA is built around a different premise. **A finding is only CONFIRMED when a second independent agent — one instructed to distrust the first — calls a forensic tool and reads the actual bytes off the disk.** If the file is not there, the technique is refuted. No amount of model confidence changes that.
 
@@ -44,7 +46,7 @@ ADVERSA investigates any mounted Windows forensic image through a four-phase pip
 
 **Phase 3 — Forensic Auditor.** After triage completes, the Auditor challenges every detected technique in parallel (`asyncio.gather`), running up to 5 rounds of 2 independent tool calls per technique. The Auditor receives the findings list only — no access to triage reasoning, no shared session state. Its mandate: *assume every finding is a false positive until the filesystem proves otherwise.* A CONFIRMED verdict requires a positive tool return value. REFUTED requires evidence of absence. Model confidence produces neither.
 
-Confirmed IOCs propagate automatically to subsequent host investigations. The same attacker account, C2 IP, or malware hash found on nfury is injected as a priority signal when controller is investigated next.
+Confirmed IOCs propagate automatically to subsequent host investigations. The same attacker account, C2 IP, or malware hash found on one host is injected as a priority signal into every subsequent investigation.
 
 ---
 
@@ -106,8 +108,6 @@ Seven were refuted. The attack chain: httppump C2 at `199.73.28.114/ads/`, attac
 
 **The auditor refutation rate is the result, not a failure.** On nfury: 9 detected, 2 confirmed. An analyst who received 9 unverified technique flags would open 9 investigation threads. An analyst who receives 2 confirmed findings with physical artifact citations and 7 explicit refutals with reasoning opens 2. The Auditor's job is to narrow — and it did.
 
-**Architectural anti-hallucination.** The controller investigation (earlier pipeline version) produced a triage score of 145 across 3 techniques. The Auditor refuted 2 on physical evidence — legitimate `svchost.exe` in WinSxS, a user profile directory mistaken for active enumeration. Final score: 50. One confirmed technique, zero false accusations.
-
 **Every confirmed finding is independently reproducible.** The audit log contains the exact command, the exact output, and the exact timestamp. There are no findings that require trusting the model.
 
 ---
@@ -120,7 +120,7 @@ Seven were refuted. The attack chain: httppump C2 at `199.73.28.114/ads/`, attac
 
 **Generic signals and case IOCs are fundamentally different things.** A signal that fires on `psexesvc` in a malware corpus generalizes. A signal that fires on `199.73.28.114` is a case-specific IOC. Baking IOCs into the detection layer inflates scores on familiar images without generalizing to new ones. ADVERSA separates these explicitly — corpus weights are generic, IOC files are opt-in at runtime.
 
-**One confirmed case is more defensible than ten unverified ones.** The pressure to show results on all four hackathon hosts is real. The honest answer is that the full-pipeline system (corpus-calibrated weights, decoupled passes, fixed auditor) was validated on nfury. Earlier results on controller and tdungan reflect a different version of the pipeline. We report them separately.
+**One confirmed case is more defensible than ten unverified ones.** The full-pipeline system — corpus-calibrated weights, decoupled passes, fixed auditor — was validated on nfury. That is the one data point we stand behind completely.
 
 ---
 
@@ -133,3 +133,5 @@ Seven were refuted. The attack chain: httppump C2 at `199.73.28.114/ads/`, attac
 **Timeline correlation.** Plaso is on every SIFT workstation. Filtering a supertimeline to the 4-minute window around a confirmed technique execution turns individual artifact matches into activity chains — the difference between "this binary existed on disk" and "this binary ran at 14:32:07, four minutes before this network connection."
 
 **Memory-resident technique coverage.** Techniques that deliberately avoid disk artifacts require memory-first analysis. The Volatility 3 path exists; expanding it to cover process hollowing, DKOM, and kernel rootkit signatures is the next engineering target.
+
+**Neural network detection with an audit admissibility layer.** TrueAllele DNA mixture interpretation and COMPAS recidivism scoring have already been challenged in court on black-box grounds — defendants argued that the inability to inspect model internals violated due process. A deep neural network trained on real Sysmon telemetry would outperform log-odds ratios on detection rate, but its weights cannot be explained in a chain-of-custody review. ADVERSA's Forensic Auditor is the direct answer: a black-box detection model can be deployed as the triage layer if, and only if, every flagged finding is subsequently verified by an Auditor that reads physical bytes off disk and produces an artifact citation traceable to a specific tool call. The neural network provides the detection rate. The Auditor provides the admissibility. This is not a workaround — it is the correct architecture for forensic AI that will survive legal challenge.

@@ -174,10 +174,7 @@ The two-pass self-correction in `blue_agent.py` partially mitigates FPs by
 running deeper targeted scans only when the score is ambiguous (30–70), allowing
 the agent to either confirm or dismiss partial matches before escalating.
 
-The Forensic Auditor independently refuted two triage FPs on the controller host:
-T1036.005 (masquerading) and T1087.001 (account discovery) were scored by the Triage
-Agent but REFUTED when the Auditor found no physical artifacts on disk to support
-either finding. Both false positives were caught without human review.
+On nfury, the Forensic Auditor processed 9 flagged techniques and refuted 7 — techniques scored by the Triage Agent for which no physical artifact was found on disk. Two survived: T1003.002 (SAM credential dump) and T1055 (process injection). All refutals were caught without human review.
 
 ---
 
@@ -185,9 +182,7 @@ either finding. Both false positives were caught without human review.
 
 **Was the evidence boundary tested?** Observationally, during live investigation runs.
 
-During all four host investigations (`nromanoff`, `tdungan`, `nfury`, `controller`),
-the evidence directories (`/mnt/`, `/cases/`) were monitored for writes. No writes
-were observed. All output was routed to `reports/` as designed.
+During the nfury investigation, the evidence directories (`/mnt/`, `/cases/`) were monitored for writes. No writes were observed. All output was routed to `reports/` as designed.
 
 ### What the architecture guarantees (and how to verify)
 

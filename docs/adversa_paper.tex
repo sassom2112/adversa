@@ -4,9 +4,8 @@
 %% Real data sourced from:
 %%   reports/accuracy_report.json  (4500-iteration checkpoint)
 %%   ACCURACY.md                   (progression table + FP analysis)
-%%   reports/nfury-investigation.json        (triage 95, adjusted 95)
-%%   reports/controller-report.html          (triage 145, adjusted 50)
-%%   reports/tdungan-investigation.json      (triage 67, adjusted 85)
+%%   reports/nfury-investigation.json        (triage 100, adjusted 70)
+%%   controller, tdungan — pending re-run with current pipeline
 
 \documentclass[sigconf, nonacm]{acmart}
 
@@ -50,11 +49,12 @@ ATT\&CK techniques. No neural network is used---every signal weight is
 a number traceable to a source sample. A Forensic Auditor challenges
 every detected technique under a bounded tool-call budget, demanding
 physical artifact verification before confirming any finding. The system
-was validated on four machines from an APT intrusion: it correctly
-identified the attack chain (credential dumping, C2 via httppump,
-lateral movement via PsExec, exfiltration via RAR archive), refuted
-false positives on two machines, and produced a complete IOC set linking
-the \texttt{vibranium} domain account across the enterprise. All findings
+was validated on the nfury host from an APT intrusion: triage scored
+100/100 across 9 MITRE techniques; the Auditor confirmed two
+(T1003.002 credential dumping via SAM hive extraction; T1055 process
+injection via memory analysis), refuted seven, and produced a complete
+IOC set linking the \texttt{vibranium} domain account, httppump C2,
+and \texttt{a.exe} loader. All findings
 trace to specific forensic tool calls in an append-only audit log;
 every confirmed technique can be independently reproduced with one shell
 command on the same mounted image.
@@ -523,9 +523,9 @@ writes a structured \texttt{reports/\{host\}-iocs.json} file.  The
 from multiple hosts into a single campaign-level file:
 
 \begin{quote}\small
-\texttt{./adversa-merge-iocs.sh reports/nfury-iocs.json \textbackslash \\
-\phantom{....}reports/controller-iocs.json -o reports/campaign.json} \\
-\texttt{./adversa.sh --ioc-file reports/campaign.json /mnt/tdungan}
+\texttt{./adversa-merge-iocs.sh reports/host1-iocs.json \textbackslash \\
+\phantom{....}reports/host2-iocs.json -o reports/campaign.json} \\
+\texttt{./adversa.sh --ioc-file reports/campaign.json /mnt/host3}
 \end{quote}
 
 This workflow enables cross-host IOC correlation without contaminating
@@ -533,84 +533,78 @@ the generic TTP detection baseline: each new image is still swept first
 by the generic Pass~1 commands, with case-specific IOC commands appended
 as a second tier.
 
-\subsection{Results on APT-Compromised Machines}
+\subsection{Results on nfury (Current Pipeline)}
 
-\Cref{tab:results} summarises findings across four machines from an
-APT intrusion with Chinese-language artifacts. nromanoff was the
-manual seed investigation; nfury, controller, and tdungan were
-investigated autonomously using the trained pipeline.
+\Cref{tab:results} summarises findings from the nfury investigation
+using the full current pipeline (corpus-calibrated weights, decoupled
+passes, fixed auditor). Additional hosts are pending re-run with the
+current pipeline.
 
-\begin{table*}[!ht]
+\begin{table}[!ht]
 \centering
-\caption{Pipeline results on four APT-compromised machines.
-  Triage scores reflect Pass~1+2 weighted signal matches; adjusted
-  scores reflect the Forensic Auditor's confirmed-technique sum after
+\caption{Pipeline results on nfury (current pipeline).
+  Triage score reflects Pass~1+2 weighted signal matches; adjusted
+  score reflects the Forensic Auditor's confirmed-technique sum after
   refuting false positives. All findings are traceable to a specific
   tool call in the append-only audit log
   (\texttt{reports/audit\_log.jsonl}).}
 \label{tab:results}
 \begin{tabular}{@{}lcclll@{}}
 \toprule
-Machine (IP)           & Triage & Adjusted & Confirmed Techniques & Refuted \\
+Machine (IP)      & Triage & Adjusted & Confirmed & Refuted \\
 \midrule
-nromanoff (10.3.58.5)  & seed\textsuperscript{†} & seed
-                        & T1547.001, T1036.005, T1071.001, T1569.002 & — \\
-nfury (10.3.58.6)      & 95  & 95
-                        & T1003.001, T1087.001 & — \\
-controller (10.3.58.4) & 145 & 50
-                        & T1003.001 & T1036.005, T1087.001 \\
-tdungan (10.3.58.7)    & 67  & 85
-                        & T1003.001, T1071.001 & — \\
+nfury (10.3.58.6) & 100 & 70 & T1003.002, T1055 & 7 techniques \\
 \bottomrule
 \end{tabular}
-\smallskip\\
-\raggedright\footnotesize
-\textsuperscript{†}nromanoff was the manual seed investigation. Its
-IOCs (spinlock.exe MD5, C2 IPs, vibranium SID) informed the initial
-\texttt{--ioc-file} used for subsequent hosts. The ASL framework trained
-independently on OTRF Mordor datasets---not on nromanoff evidence.
-\end{table*}
+\end{table}
 
 \paragraph{nfury.}
-Both confirmed techniques are grounded in physical artifacts:
-\texttt{hydrakatz.exe} (credential dumping, T1003.001) was found in
-the user profile directory with a verifiable MD5 hash, and account
-enumeration artifacts (T1087.001) were confirmed via SAM hive analysis.
-No false positives were generated; the Auditor confirmed both techniques
-without contradiction in 6 argumentation rounds.
+Triage scored 100/100 across 9 detected techniques. The Auditor
+challenged all 9 in parallel over 25 argumentation rounds and confirmed
+two on physical artifacts. T1003.002 (SAM credential dump) was confirmed
+via registry hive extraction—the SAM hive at
+\texttt{Windows/System32/config/SAM} was verified accessible and the
+attacker account \texttt{vibranium} was confirmed via ProfileList
+analysis (SID \texttt{S-1-5-21-2036804247-3058324640-2116585241-1673}).
+T1055 (Process Injection) was confirmed via Volatility~3 memory
+analysis of the \texttt{a.exe} loader. Seven techniques were refuted.
+The attack chain includes httppump C2 at \texttt{199.73.28.114/ads/}
+and exfiltration via \texttt{system4.rar}. Total runtime: 17 minutes;
+total cost: \$14.
 
-\paragraph{controller.}
-The triage score of 145 reflects three detected techniques, but the
-Auditor reduced the adjusted score to 50 by refuting two of them.
-T1036.005 (Masquerading) was triggered by \texttt{svchost.exe} copies
-in WinSxS directories---legitimate Windows component store locations,
-not masquerading. T1087.001 (Account Discovery) was triggered by the
-presence of a \texttt{vibranium} user profile directory, not by active
-enumeration tooling. The Auditor correctly distinguished profile
-\emph{existence} from enumeration \emph{activity}. Only T1003.001
-survived: \texttt{procdump.exe} confirmed in
-\texttt{/Tools/SysInternals/} and \texttt{spinlock.exe} confirmed in
-the WER ReportQueue crash dump. This result demonstrates the Auditor's
-core value: a triage score of 145 would have generated three analyst
-work items; the adjusted score of 50 with one confirmed technique is
-the correct verdict.
+\subsection{Earlier Pipeline — Lessons Learned}
+\label{sec:lessons}
 
-\paragraph{tdungan.}
-tdungan was investigated with IOCs from the merged nfury and controller
-campaign file as a blind forward-validation test. Triage score 67
-escalated to adjusted score 85 after the Auditor confirmed both
-T1003.001 and T1071.001 with physical artifact verification. The score
-increase (67 $\to$ 85) reflects Auditor IOC cross-match scoring applied
-to confirmed C2 infrastructure evidence absent from the initial generic
-sweep. No false positives were generated.
+Two additional hosts were investigated with an earlier pipeline version
+prior to the corpus weight calibration, pass-decoupling fix, and
+auditor improvements documented here. These results are not directly
+comparable to the nfury run but surface engineering lessons that
+informed the current architecture.
 
-All four machines shared the same C2 infrastructure
-(\texttt{12.190.135.235/ads/}, \texttt{199.73.28.114:443}),
-the same compromised domain account (\texttt{vibranium},
-full SID \texttt{S-1-5-21-2036804247-3058324640-2116585241-1673} confirmed
-in ProfileList on nfury; source: \texttt{reports/nfury-custom-agent-report.json}),
-and the same implant binary (\texttt{spinlock.exe},
-MD5~\texttt{6bff2aebb8852fc2658b9768d2166ece}).
+\paragraph{controller (earlier pipeline).}
+Triage scored 145 across three detected techniques. The Auditor refuted
+two. T1036.005 (Masquerading) was triggered by \texttt{svchost.exe}
+copies in WinSxS---legitimate Windows component store locations, not
+masqueraded binaries. T1087.001 (Account Discovery) was triggered by
+the presence of a \texttt{vibranium} user profile directory, not by
+active enumeration tooling. The Auditor correctly distinguished profile
+\emph{existence} from enumeration \emph{activity}. T1003.001 survived:
+\texttt{procdump.exe} confirmed in \texttt{/Tools/SysInternals/} and
+\texttt{spinlock.exe} confirmed in the WER ReportQueue crash dump.
+\textbf{Lesson:} triage signals that fire on filesystem presence (binary
+exists on path) without requiring execution evidence generate FPs that
+the Auditor must correct. The corpus weight revision dampened
+presence-only signals.
+
+\paragraph{tdungan (earlier pipeline).}
+Triage scored 67. After the Auditor confirmed both T1003.001 and
+T1071.001 with physical artifact verification, adjusted score rose
+to 85---reflecting IOC cross-match scoring applied to confirmed C2
+infrastructure evidence absent from the generic sweep.
+\textbf{Lesson:} confirmed IOC propagation from a prior host
+increases the adjusted score when those IOCs appear on a new image.
+This is the intended campaign-mode behavior; the score increase is
+not a measurement artifact.
 
 \subsection{Evidence Provenance}
 
@@ -627,12 +621,9 @@ Acquisition hashes are embedded in each E01 and verified read-only via
 \small
 \begin{tabular}{@{}llll@{}}
 \toprule
-Host (IP)             & Evi.\,\# & MD5 (acquisition) & SHA-1 (acquisition) \\
+Host (IP)         & Evi.\,\# & MD5 (acquisition) & SHA-1 (acquisition) \\
 \midrule
-nromanoff (10.3.58.5) & nromanoff-002  & \texttt{e381e006\ldots} & \texttt{c1f061a7\ldots} \\
-nfury (10.3.58.6)     & nfury-002      & \texttt{a98416e6\ldots} & \texttt{829553fd\ldots} \\
-controller (10.3.58.4)& Controller-002 & \texttt{3a33c416\ldots} & \texttt{423e404a\ldots} \\
-tdungan (10.3.58.7)   & tdungan-002    & (pending ewfinfo) & (pending ewfinfo) \\
+nfury (10.3.58.6) & nfury-002 & \texttt{a98416e6\ldots} & \texttt{829553fd\ldots} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -831,9 +822,9 @@ deployment against live endpoints—in a 1,000-endpoint environment it
 would generate approximately 870 analyst reviews per sweep. It is
 suitable for forensic triage of known-suspicious disk images where the
 base rate of compromise is high. The Forensic Auditor mitigates this in
-deployment: on the controller, the Auditor correctly refuted 2 of 3
-triage detections as false positives, reducing the analyst workload from
-three technique investigations to one.
+deployment: on nfury, the Auditor correctly refuted 7 of 9 triage
+detections, reducing the analyst workload from nine technique
+investigations to two.
 
 The rate is explained structurally by two factors. First, a training
 imbalance: the Mordor dataset provides \num{49519} attack events
@@ -885,6 +876,23 @@ is excluded from the per-technique accuracy table.
   \item \textbf{Atomic Red Team VM integration} — real adversary-tool
         execution against a live Windows VM for truly novel Red Agent
         evasions beyond LLM-generated variants.
+  \item \textbf{Neural network detection with auditor admissibility layer.}
+        The legal battleground for forensic AI admissibility is already
+        established. TrueAllele (probabilistic DNA mixture interpretation)
+        and COMPAS (recidivism scoring) have been challenged in court on
+        black-box grounds---defendants argued the inability to inspect
+        model internals violated due process. A deep neural network
+        trained on Mordor telemetry would outperform log-odds ratios on
+        detection rate, but its weights are not explainable in the way
+        a court or chain-of-custody review requires. The ADVERSA audit
+        architecture is the direct answer: a black-box detection model
+        can be deployed as the triage layer if---and only if---every
+        flagged finding is subsequently verified by a Forensic Auditor
+        that reads physical bytes off disk and produces an artifact
+        citation traceable to a specific tool call. The NN provides the
+        detection rate; the Auditor provides the admissibility. This
+        separation is not a workaround---it is the correct architecture
+        for production forensic AI.
 \end{itemize}
 
 %% ── 11. Conclusion ──────────────────────────────────────────────────────────
@@ -898,13 +906,12 @@ iteration~10, and measured autonomous recovery to 76\% detection and
 F1~=~0.72 over \num{4500} iterations with no human intervention. The
 \num{2031} adversarial evasion attempts embedded in the exported Sigma
 rules give analysts a quantitative hardening metric that does not
-exist in any manually authored rule set. Four real machines from an APT
-intrusion with Chinese-language artifacts were investigated autonomously;
-the Forensic Auditor correctly refuted two false positives on the
-controller and confirmed independent credential-dumping and C2
-infrastructure evidence on tdungan as a blind forward-validation test.
-The \texttt{vibranium} account and \texttt{spinlock.exe} implant were
-identified across the enterprise from a single trained signal.
+exist in any manually authored rule set. The nfury host from an APT intrusion with Chinese-language artifacts
+was investigated autonomously; the Forensic Auditor correctly refuted
+7 of 9 triage detections and confirmed T1003.002 and T1055 on physical
+artifacts. The \texttt{vibranium} domain account (SID confirmed in
+ProfileList) and httppump C2 infrastructure were fully characterized
+from a single autonomous run.
 
 Every other approach gives defenders better tools. find-evil gives
 defenders the same adaptive mechanism that makes AI attacks

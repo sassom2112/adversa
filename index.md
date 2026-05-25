@@ -70,4 +70,4 @@ Independent parallel re-verification of every finding. Up to 5 challenge rounds 
 Confirmed: **T1003.002** (SAM credential dump), **T1055** (process injection via a.exe loader).
 Attack chain: httppump C2 at 199.73.28.114/ads/, attacker account `vibranium`, exfil via system4.rar.
 
-**controller, tdungan** — investigated with an earlier pipeline version (pre-corpus weights). Results in [SUBMISSION.md](submission). Not directly comparable to current system output.
+Additional hosts (controller, tdungan, nromanoff) pending re-run with current pipeline.

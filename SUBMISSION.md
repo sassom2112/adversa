@@ -10,92 +10,13 @@ ADVERSA runs on a SANS SIFT workstation against mounted Windows disk images. The
 
 ---
 
-## Watch It Self-Correct
+## Live Investigation Report
 
-The most compelling run is the **controller** host from the SANS FIND EVIL! 2026 case set. The Triage Agent flags three techniques with a score of 145. The Forensic Auditor independently challenges each one. Two are false positives. One is confirmed on disk.
+The nfury investigation is the validated run of the current pipeline. The full Auditor transcript — every challenge round, every tool call, every verdict — is interactive and browsable.
 
-**Triage Agent — Phase 1 output:**
+[View nfury Investigation Report](/nfury){: .btn .btn-primary .mb-4 }
 
-```
-════════════════════════════════════════════════════════════
-  ADVERSARIAL INVESTIGATION ORCHESTRATOR
-  Framework:  ADVERSA (Adversarial Signal Learning)
-  Target:     /mnt/controller
-  Started:    2026-05-15T21:28:40Z
-════════════════════════════════════════════════════════════
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  PHASE 1  —  TRIAGE AGENT  (The Optimist)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Pass 1: deterministic sweep — 24 tool calls
-
-  Score: 145  →  HIGH
-    • Masquerading         (+50) [ASL] via: ['WmiPrvSE.exe', 'wmiprvse.exe', 'svchost.exe']
-    • Credential Dumping   (+50) [ASL] via: ['procdump', 'spinlock', 'spinlock.exe']
-    • Account Discovery    (+45) [ASL] via: ['WmiPrvSE.exe', 'vibranium', 'SHIELDBASE+vibranium']
-```
-
-Three techniques flagged. Score 145. If this were a traditional triage tool, an analyst would open three investigations. ADVERSA sends the findings to the Auditor instead.
-
----
-
-**Forensic Auditor — Phase 2, challenging each finding:**
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  PHASE 2  —  FORENSIC AUDITOR  (The Cynic)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Challenging T1036.005 — Masquerading
-    Round 1: find_suspicious_executables + check_known_iocs
-    Artifact found: svchost.exe in
-      /Windows/winsxs/amd64_microsoft-windows-services-svchost_.../svchost.exe
-    ✗ REFUTED — WinSxS is a legitimate Windows component store.
-                No masqueraded binary outside System32 or WinSxS.
-
-  Challenging T1003.001 — Credential Dumping
-    Round 1: get_credential_artifacts + find_suspicious_executables
-    Artifact found: /mnt/controller/Tools/SysInternals/procdump.exe
-                    /mnt/controller/Windows/System32/config/SAM
-    ✓ CONFIRMED — procdump.exe on disk. SAM hive accessible.
-                  spinlock.exe WER crash artifact in ReportQueue.
-
-  Challenging T1087.001 — Account Discovery
-    Round 1: check_known_iocs + run_terminal_command
-    Artifact found: /mnt/controller/Users/vibranium/ (profile directory)
-    ✗ REFUTED — WmiPrvSE.exe is a legitimate Windows process.
-                vibranium is a user profile, not an enumeration tool.
-                No net.exe, dsquery, or SAMR calls found on disk.
-```
-
----
-
-**Final result:**
-
-```
-════════════════════════════════════════════════════════════
-  INVESTIGATION COMPLETE  (397s)
-
-  Triage score:          145
-  After audit:           50
-  Confirmed techniques:  ['T1003.001']
-  Inconclusive:          []
-  Refuted  techniques:   ['T1036.005', 'T1087.001']
-  Argumentation rounds:  5
-  Final verdict:         HIGH — Active compromise confirmed
-                         (high-value technique verified on disk)
-
-  Reports written:
-    Triage     →  reports/controller-custom-agent-report.json
-    Transcript →  reports/controller-auditor-transcript.json
-    Unified    →  reports/controller-investigation.json
-    HTML       →  reports/controller-report.html
-    IOCs       →  reports/controller-iocs.json
-════════════════════════════════════════════════════════════
-```
-
-The Auditor saved an analyst two false investigation threads. The one confirmed finding — `procdump.exe` staged at `Tools/SysInternals/` alongside a WER crash artifact from `spinlock.exe` — is real and on disk. Score 145 → 50. Both false positives caught without human review.
+nfury: triage 100/100 across 9 techniques. Auditor confirmed 2 (T1003.002, T1055), refuted 7. 17 minutes. $14.
 
 ---
 

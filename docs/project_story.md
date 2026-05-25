@@ -6,7 +6,7 @@ permalink: /story
 
 # ADVERSA — Adversarial Forensic Verification for Windows Incident Response
 
-**SANS FIND EVIL! Hackathon 2026 | Category 7: Persistent Learning Loop**
+**SANS FIND EVIL! Hackathon 2026 | Persistent Learning Loop**
 
 **9** MITRE techniques covered &nbsp;·&nbsp;
 **800+** labeled malware samples in corpus &nbsp;·&nbsp;

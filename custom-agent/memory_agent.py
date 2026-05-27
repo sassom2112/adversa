@@ -380,7 +380,12 @@ async def investigate(memory_path: str, host: str,
                     tool_results = []
                     for block in tool_use_blocks:
                         if tool_call_count >= MAX_AGENT_TOOLS:
-                            break
+                            tool_results.append({
+                                'type':        'tool_result',
+                                'tool_use_id': block.id,
+                                'content':     'Budget exhausted — tool execution cancelled.',
+                            })
+                            continue
                         tool_call_count += 1
                         cmd = block.input.get('command', '')
                         print(f"  [M2:{tool_call_count}] {cmd[:80]}")

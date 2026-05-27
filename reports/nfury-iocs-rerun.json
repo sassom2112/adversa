@@ -1,0 +1,23 @@
+{
+  "source_host": "nfury",
+  "c2_ips": [
+    "56.251.168.26"
+  ],
+  "filenames": [
+    "a.exe",
+    "f-response-ent.exe",
+    "msvcr71.dll",
+    "psexec.exe",
+    "psexesvc.exe",
+    "shell.exe",
+    "spinlock.exe",
+    "starfury.zip",
+    "system4.rar"
+  ],
+  "accounts": [
+    "nfury",
+    "vibranium"
+  ],
+  "registry_keys": [],
+  "directories": []
+}

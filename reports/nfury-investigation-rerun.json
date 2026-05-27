@@ -1,0 +1,55 @@
+{
+  "generated": "2026-05-27T03:35:08.911503+00:00",
+  "target": "/mnt/nfury",
+  "memory_path": "/home/sansforensics/cases/nfury/win7-64-nfury-memory/win7-64-nfury-memory-raw.001",
+  "framework": "ADVERSA \u2014 Adversarial Signal Learning",
+  "pipeline": "Disk+Memory Triage -> Forensic Auditor",
+  "elapsed_s": 669.2,
+  "triage": {
+    "disk_score": 100,
+    "memory_score": 100,
+    "combined_score": 100,
+    "techniques_detected": [
+      "T1003.002",
+      "T1036.005",
+      "T1055",
+      "T1134",
+      "T1547.001",
+      "T1560.001",
+      "T1569.002",
+      "T1574"
+    ],
+    "technique_sources": {
+      "T1036.005": "disk",
+      "T1560.001": "disk",
+      "T1574": "memory",
+      "T1547.001": "memory",
+      "T1055": "memory",
+      "T1003.002": "memory",
+      "T1134": "memory",
+      "T1569.002": "disk"
+    },
+    "disk_report_path": "/home/sansforensics/adversa/reports/nfury-custom-agent-report.json",
+    "memory_report_path": "/home/sansforensics/adversa/reports/nfury-memory-triage-report.json"
+  },
+  "audit": {
+    "adjusted_score": 100,
+    "confirmed": [
+      "T1003.002",
+      "T1036.005",
+      "T1055",
+      "T1134",
+      "T1560.001",
+      "T1569.002"
+    ],
+    "inconclusive": [],
+    "refuted": [
+      "T1547.001",
+      "T1574"
+    ],
+    "argumentation_rounds": 9,
+    "transcript_path": "/home/sansforensics/adversa/reports/nfury-auditor-transcript.json"
+  },
+  "final_verdict": "HIGH \u2014 Active compromise confirmed (high-value technique verified on disk)",
+  "convergence": "all_findings_processed"
+}

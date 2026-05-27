@@ -1095,6 +1095,21 @@ relies entirely on IOC-based protected signals (confirmed C2 IPs from
 the case investigation). It is not subject to the adversarial loop and
 is excluded from the per-technique accuracy table.
 
+\textbf{LLM investigation is non-deterministic.} A re-run of nfury on
+the same evidence with the same code produced 8 detected techniques and
+6 confirmed---versus 19 detected and 15 confirmed on the original run.
+Same disk image, same pipeline, different LLM exploration path.
+The disk investigation agent (Pass~2, 75-call budget) surfaced
+13 disk-resident techniques on the first run and 3 on the second;
+it took different branching decisions each time.
+The confirmed findings from either run are individually valid---every
+CONFIRMED finding in both transcripts cites a real tool call and a
+real artifact on disk. But the \emph{set} of confirmed findings is
+not stable across runs. This is a fundamental property of agentic
+LLM investigation, not a bug. Mitigation: run multiple passes and
+take the union of confirmed findings; or accept the first run's output
+as a lower bound with the audit log as the reproducibility guarantee.
+
 %% ── 10. Future Work ─────────────────────────────────────────────────────────
 \section{Future Work}
 

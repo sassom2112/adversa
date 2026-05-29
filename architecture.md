@@ -12,6 +12,9 @@ Two agents. Zero shared state. One rule: `CONFIRMED` requires a positive tool re
 
 ## The Pipeline
 
+![VERITAS Layered Architecture](docs/adversa-architecture.png)
+*Layered security architecture — adversarial training signal through output management.*
+
 ```
 Mounted Disk Image (read-only)
         |
